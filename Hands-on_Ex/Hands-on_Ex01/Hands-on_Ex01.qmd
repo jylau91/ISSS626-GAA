@@ -3,20 +3,41 @@ title: "Hands-on Exercise 1"
 author: "Lau Jia Yi"
 ---
 
-# Getting Started
+# 1 Geospatial Data Wrangling with R
 
-## Install and launching R packages
+## 1.1 Data Sources
 
-The code chunk below uses p_load() of pacman package to check if tidyverse packages are installed in the computer. If they are, then they will be launched into R.
+-   Master Plan 2014 Subzone Boundary (Web) from [data.gov.sg](https://data.gov.sg/)
+
+-   Pre-Schools Location from [data.gov.sg](https://data.gov.sg/)
+
+-   Cycling Path from [LTADataMall](https://www.mytransport.sg/content/mytransport/home/dataMall.html)
+
+-   Latest version of Singapore Airbnb listing data from [Inside Airbnb](http://insideairbnb.com/get-the-data.html)
+
+## 1.2 R Packages used
+
+-   **sf** for importing, managing, and processing geospatial data, and
+-   **tidyverse** for performing data science tasks such as importing, wrangling and visualising data.
+-   **readr** for importing csv data,
+-   **readxl** for importing Excel worksheet,
+-   **tidyr** for manipulating data,
+-   **dplyr** for transforming data, and
+-   **ggplot2** for visualising data
+
+## 1.3 Loading of R Packages
 
 ```{r}
-pacman::p_load(tidyverse)
+pacman::p_load(sf, tidyverse)
 ```
 
-## Importing the data
+Note: p_load function of pacman package is used to install and load sf and tidyverse packages into R environment.
+
+## 1.4 Importing Geospatial data
 
 ```{r}
-listing_data <- read_csv("data/listings.csv")
+mpsz = st_read(dsn = "data/geospatial", 
+                  layer = "MP14_SUBZONE_WEB_PL")
 ```
 
 # Plotting a simple bar chart
