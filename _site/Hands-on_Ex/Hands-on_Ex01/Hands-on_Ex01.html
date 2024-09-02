@@ -160,12 +160,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#getting-started" id="toc-getting-started" class="nav-link active" data-scroll-target="#getting-started">Getting Started</a>
+  <li><a href="#geospatial-data-wrangling-with-r" id="toc-geospatial-data-wrangling-with-r" class="nav-link active" data-scroll-target="#geospatial-data-wrangling-with-r">1 Geospatial Data Wrangling with R</a>
   <ul class="collapse">
-  <li><a href="#install-and-launching-r-packages" id="toc-install-and-launching-r-packages" class="nav-link" data-scroll-target="#install-and-launching-r-packages">Install and launching R packages</a></li>
-  <li><a href="#importing-the-data" id="toc-importing-the-data" class="nav-link" data-scroll-target="#importing-the-data">Importing the data</a></li>
+  <li><a href="#data-sources" id="toc-data-sources" class="nav-link" data-scroll-target="#data-sources">1.1 Data Sources</a></li>
+  <li><a href="#r-packages-used" id="toc-r-packages-used" class="nav-link" data-scroll-target="#r-packages-used">1.2 R Packages used</a></li>
+  <li><a href="#loading-of-r-packages" id="toc-loading-of-r-packages" class="nav-link" data-scroll-target="#loading-of-r-packages">1.3 Loading of R Packages</a></li>
+  <li><a href="#importing-geospatial-data" id="toc-importing-geospatial-data" class="nav-link" data-scroll-target="#importing-geospatial-data">1.4 Importing Geospatial data</a>
+  <ul class="collapse">
+  <li><a href="#importing-polygon-feature-data-in-shapefile-format" id="toc-importing-polygon-feature-data-in-shapefile-format" class="nav-link" data-scroll-target="#importing-polygon-feature-data-in-shapefile-format">1.4.1 Importing polygon feature data in shapefile format</a></li>
+  <li><a href="#importing-gis-data-in-kml-format" id="toc-importing-gis-data-in-kml-format" class="nav-link" data-scroll-target="#importing-gis-data-in-kml-format">1.4.3 Importing GIS data in kml format</a></li>
   </ul></li>
-  <li><a href="#plotting-a-simple-bar-chart" id="toc-plotting-a-simple-bar-chart" class="nav-link" data-scroll-target="#plotting-a-simple-bar-chart">Plotting a simple bar chart</a></li>
+  <li><a href="#checking-the-content-of-a-simple-feature-data-frame" id="toc-checking-the-content-of-a-simple-feature-data-frame" class="nav-link" data-scroll-target="#checking-the-content-of-a-simple-feature-data-frame">1.5 Checking the Content of a Simple Feature Data Frame</a></li>
+  </ul></li>
   </ul>
 </nav>
     </div>
@@ -197,53 +203,98 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 
-<section id="getting-started" class="level1">
-<h1>Getting Started</h1>
-<section id="install-and-launching-r-packages" class="level2">
-<h2 class="anchored" data-anchor-id="install-and-launching-r-packages">Install and launching R packages</h2>
-<p>The code chunk below uses p_load() of pacman package to check if tidyverse packages are installed in the computer. If they are, then they will be launched into R.</p>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>pacman<span class="sc">::</span><span class="fu">p_load</span>(tidyverse)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-</div>
+<section id="geospatial-data-wrangling-with-r" class="level1">
+<h1>1 Geospatial Data Wrangling with R</h1>
+<section id="data-sources" class="level2">
+<h2 class="anchored" data-anchor-id="data-sources">1.1 Data Sources</h2>
+<ul>
+<li><p>Master Plan 2014 Subzone Boundary (Web) from <a href="https://data.gov.sg/">data.gov.sg</a></p></li>
+<li><p>Pre-Schools Location from <a href="https://data.gov.sg/">data.gov.sg</a></p></li>
+<li><p>Cycling Path from <a href="https://www.mytransport.sg/content/mytransport/home/dataMall.html">LTADataMall</a></p></li>
+<li><p>Latest version of Singapore Airbnb listing data from <a href="http://insideairbnb.com/get-the-data.html">Inside Airbnb</a></p></li>
+</ul>
 </section>
-<section id="importing-the-data" class="level2">
-<h2 class="anchored" data-anchor-id="importing-the-data">Importing the data</h2>
+<section id="r-packages-used" class="level2">
+<h2 class="anchored" data-anchor-id="r-packages-used">1.2 R Packages used</h2>
+<ul>
+<li><strong>sf</strong> for importing, managing, and processing geospatial data, and</li>
+<li><strong>tidyverse</strong> for performing data science tasks such as importing, wrangling and visualising data.</li>
+<li><strong>readr</strong> for importing csv data,</li>
+<li><strong>readxl</strong> for importing Excel worksheet,</li>
+<li><strong>tidyr</strong> for manipulating data,</li>
+<li><strong>dplyr</strong> for transforming data, and</li>
+<li><strong>ggplot2</strong> for visualising data</li>
+</ul>
+</section>
+<section id="loading-of-r-packages" class="level2">
+<h2 class="anchored" data-anchor-id="loading-of-r-packages">1.3 Loading of R Packages</h2>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>listing_data <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(<span class="st">"data/listings.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>Rows: 3540 Columns: 18
-── Column specification ────────────────────────────────────────────────────────
-Delimiter: ","
-chr   (6): name, host_name, neighbourhood_group, neighbourhood, room_type, l...
-dbl  (11): id, host_id, latitude, longitude, price, minimum_nights, number_o...
-date  (1): last_review
-
-ℹ Use `spec()` to retrieve the full column specification for this data.
-ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>pacman<span class="sc">::</span><span class="fu">p_load</span>(sf, tidyverse)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Note: p_load function of pacman package is used to install and load sf and tidyverse packages into R environment.</p>
+</section>
+<section id="importing-geospatial-data" class="level2">
+<h2 class="anchored" data-anchor-id="importing-geospatial-data">1.4 Importing Geospatial data</h2>
+<section id="importing-polygon-feature-data-in-shapefile-format" class="level3">
+<h3 class="anchored" data-anchor-id="importing-polygon-feature-data-in-shapefile-format">1.4.1 Importing polygon feature data in shapefile format</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>mpsz <span class="ot">=</span> <span class="fu">st_read</span>(<span class="at">dsn =</span> <span class="st">"data/geospatial"</span>, </span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>                  <span class="at">layer =</span> <span class="st">"MP14_SUBZONE_WEB_PL"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Reading layer `MP14_SUBZONE_WEB_PL' from data source 
+  `C:\Users\jia_y\OneDrive - Singapore Management University\Semester 4\ISSS626-G1 Geo Spatial Analytics and Applications\jylau91\ISSS626-GAA\Hands-on_Ex\Hands-on_Ex01\data\geospatial' 
+  using driver `ESRI Shapefile'
+Simple feature collection with 323 features and 15 fields
+Geometry type: MULTIPOLYGON
+Dimension:     XY
+Bounding box:  xmin: 2667.538 ymin: 15748.72 xmax: 56396.44 ymax: 50256.33
+Projected CRS: SVY21</code></pre>
 </div>
 </div>
+<p>The message above reveals that the geospatial objects are multipolygon features. There are a total of 323 multipolygon features and 15 fields in&nbsp;<code>mpsz</code>&nbsp;simple feature data frame.&nbsp;<code>mpsz</code>&nbsp;is in&nbsp;<strong>svy21</strong>&nbsp;projected coordinates systems. The bounding box provides the x extend and y extend of the data.</p>
+<p>Note: arguments ‘dsn’ is to define the data path layer and ‘layer’ to define provide the shapefile name.</p>
+<p>###1.4.2 Importing polyline feature data inshapefile format</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>cyclingpath <span class="ot">=</span> <span class="fu">st_read</span>(<span class="at">dsn =</span> <span class="st">"data/geospatial"</span>,</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>                      <span class="at">layer =</span> <span class="st">"CyclingPathGazette"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Reading layer `CyclingPathGazette' from data source 
+  `C:\Users\jia_y\OneDrive - Singapore Management University\Semester 4\ISSS626-G1 Geo Spatial Analytics and Applications\jylau91\ISSS626-GAA\Hands-on_Ex\Hands-on_Ex01\data\geospatial' 
+  using driver `ESRI Shapefile'
+Simple feature collection with 3138 features and 2 fields
+Geometry type: MULTILINESTRING
+Dimension:     XY
+Bounding box:  xmin: 11854.32 ymin: 28347.98 xmax: 42644.17 ymax: 48948.15
+Projected CRS: SVY21</code></pre>
+</div>
+</div>
+<p>The message above reveals that there are a total of 3138 features and 2 fields in&nbsp;<code>cyclingpath</code>&nbsp;linestring feature data frame and it is in&nbsp;<strong>svy21</strong>&nbsp;projected coordinates system too.</p>
+</section>
+<section id="importing-gis-data-in-kml-format" class="level3">
+<h3 class="anchored" data-anchor-id="importing-gis-data-in-kml-format">1.4.3 Importing GIS data in kml format</h3>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>preschool <span class="ot">=</span> <span class="fu">st_read</span>(<span class="st">"data/geospatial/PreSchoolsLocation.kml"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Reading layer `PRESCHOOLS_LOCATION' from data source 
+  `C:\Users\jia_y\OneDrive - Singapore Management University\Semester 4\ISSS626-G1 Geo Spatial Analytics and Applications\jylau91\ISSS626-GAA\Hands-on_Ex\Hands-on_Ex01\data\geospatial\PreSchoolsLocation.kml' 
+  using driver `KML'
+Simple feature collection with 2290 features and 2 fields
+Geometry type: POINT
+Dimension:     XYZ
+Bounding box:  xmin: 103.6878 ymin: 1.247759 xmax: 103.9897 ymax: 1.462134
+z_range:       zmin: 0 zmax: 0
+Geodetic CRS:  WGS 84</code></pre>
+</div>
+</div>
+<p>The message above reveals that&nbsp;<code>preschool</code>&nbsp;is a point feature data frame. There are a total of 2290 features and 2 fields. Different from the previous two simple feature data frame, preschool is in&nbsp;<strong>wgs84</strong>&nbsp;coordinates system.</p>
 </section>
 </section>
-<section id="plotting-a-simple-bar-chart" class="level1">
-<h1>Plotting a simple bar chart</h1>
-<div class="cell">
-<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(<span class="at">data=</span>listing_data,</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>       <span class="fu">aes</span>(<span class="at">x=</span>price)) <span class="sc">+</span></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_bar</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-stderr">
-<pre><code>Warning: Removed 781 rows containing non-finite outside the scale range
-(`stat_count()`).</code></pre>
-</div>
-<div class="cell-output-display">
-<div>
-<figure class="figure">
-<p><img src="Hands-on_Ex01_files/figure-html/unnamed-chunk-3-1.png" class="img-fluid figure-img" width="672"></p>
-</figure>
-</div>
-</div>
-</div>
+<section id="checking-the-content-of-a-simple-feature-data-frame" class="level2">
+<h2 class="anchored" data-anchor-id="checking-the-content-of-a-simple-feature-data-frame">1.5 Checking the Content of a Simple Feature Data Frame</h2>
+<p>Retrieving information related to the content of a simple feature data frame.</p>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->

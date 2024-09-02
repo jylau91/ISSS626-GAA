@@ -18,7 +18,7 @@
     "href": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html",
     "title": "Hands-on Exercise 1",
     "section": "",
-    "text": "The code chunk below uses p_load() of pacman package to check if tidyverse packages are installed in the computer. If they are, then they will be launched into R.\n\npacman::p_load(tidyverse)\n\n\n\n\n\nlisting_data &lt;- read_csv(\"data/listings.csv\")\n\nRows: 3540 Columns: 18\n── Column specification ────────────────────────────────────────────────────────\nDelimiter: \",\"\nchr   (6): name, host_name, neighbourhood_group, neighbourhood, room_type, l...\ndbl  (11): id, host_id, latitude, longitude, price, minimum_nights, number_o...\ndate  (1): last_review\n\nℹ Use `spec()` to retrieve the full column specification for this data.\nℹ Specify the column types or set `show_col_types = FALSE` to quiet this message."
+    "text": "Master Plan 2014 Subzone Boundary (Web) from data.gov.sg\nPre-Schools Location from data.gov.sg\nCycling Path from LTADataMall\nLatest version of Singapore Airbnb listing data from Inside Airbnb\n\n\n\n\n\nsf for importing, managing, and processing geospatial data, and\ntidyverse for performing data science tasks such as importing, wrangling and visualising data.\nreadr for importing csv data,\nreadxl for importing Excel worksheet,\ntidyr for manipulating data,\ndplyr for transforming data, and\nggplot2 for visualising data\n\n\n\n\n\npacman::p_load(sf, tidyverse)\n\nNote: p_load function of pacman package is used to install and load sf and tidyverse packages into R environment.\n\n\n\n\n\n\nmpsz = st_read(dsn = \"data/geospatial\", \n                  layer = \"MP14_SUBZONE_WEB_PL\")\n\nReading layer `MP14_SUBZONE_WEB_PL' from data source \n  `C:\\Users\\jia_y\\OneDrive - Singapore Management University\\Semester 4\\ISSS626-G1 Geo Spatial Analytics and Applications\\jylau91\\ISSS626-GAA\\Hands-on_Ex\\Hands-on_Ex01\\data\\geospatial' \n  using driver `ESRI Shapefile'\nSimple feature collection with 323 features and 15 fields\nGeometry type: MULTIPOLYGON\nDimension:     XY\nBounding box:  xmin: 2667.538 ymin: 15748.72 xmax: 56396.44 ymax: 50256.33\nProjected CRS: SVY21\n\n\nThe message above reveals that the geospatial objects are multipolygon features. There are a total of 323 multipolygon features and 15 fields in mpsz simple feature data frame. mpsz is in svy21 projected coordinates systems. The bounding box provides the x extend and y extend of the data.\nNote: arguments ‘dsn’ is to define the data path layer and ‘layer’ to define provide the shapefile name.\n###1.4.2 Importing polyline feature data inshapefile format\n\ncyclingpath = st_read(dsn = \"data/geospatial\",\n                      layer = \"CyclingPathGazette\")\n\nReading layer `CyclingPathGazette' from data source \n  `C:\\Users\\jia_y\\OneDrive - Singapore Management University\\Semester 4\\ISSS626-G1 Geo Spatial Analytics and Applications\\jylau91\\ISSS626-GAA\\Hands-on_Ex\\Hands-on_Ex01\\data\\geospatial' \n  using driver `ESRI Shapefile'\nSimple feature collection with 3138 features and 2 fields\nGeometry type: MULTILINESTRING\nDimension:     XY\nBounding box:  xmin: 11854.32 ymin: 28347.98 xmax: 42644.17 ymax: 48948.15\nProjected CRS: SVY21\n\n\nThe message above reveals that there are a total of 3138 features and 2 fields in cyclingpath linestring feature data frame and it is in svy21 projected coordinates system too.\n\n\n\n\npreschool = st_read(\"data/geospatial/PreSchoolsLocation.kml\")\n\nReading layer `PRESCHOOLS_LOCATION' from data source \n  `C:\\Users\\jia_y\\OneDrive - Singapore Management University\\Semester 4\\ISSS626-G1 Geo Spatial Analytics and Applications\\jylau91\\ISSS626-GAA\\Hands-on_Ex\\Hands-on_Ex01\\data\\geospatial\\PreSchoolsLocation.kml' \n  using driver `KML'\nSimple feature collection with 2290 features and 2 fields\nGeometry type: POINT\nDimension:     XYZ\nBounding box:  xmin: 103.6878 ymin: 1.247759 xmax: 103.9897 ymax: 1.462134\nz_range:       zmin: 0 zmax: 0\nGeodetic CRS:  WGS 84\n\n\nThe message above reveals that preschool is a point feature data frame. There are a total of 2290 features and 2 fields. Different from the previous two simple feature data frame, preschool is in wgs84 coordinates system.\n\n\n\n\nRetrieving information related to the content of a simple feature data frame."
   },
   {
     "objectID": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html#install-and-launching-r-packages",
@@ -33,5 +33,40 @@
     "title": "Hands-on Exercise 1",
     "section": "",
     "text": "listing_data &lt;- read_csv(\"data/listings.csv\")\n\nRows: 3540 Columns: 18\n── Column specification ────────────────────────────────────────────────────────\nDelimiter: \",\"\nchr   (6): name, host_name, neighbourhood_group, neighbourhood, room_type, l...\ndbl  (11): id, host_id, latitude, longitude, price, minimum_nights, number_o...\ndate  (1): last_review\n\nℹ Use `spec()` to retrieve the full column specification for this data.\nℹ Specify the column types or set `show_col_types = FALSE` to quiet this message."
+  },
+  {
+    "objectID": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html#data-sources",
+    "href": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html#data-sources",
+    "title": "Hands-on Exercise 1",
+    "section": "",
+    "text": "Master Plan 2014 Subzone Boundary (Web) from data.gov.sg\nPre-Schools Location from data.gov.sg\nCycling Path from LTADataMall\nLatest version of Singapore Airbnb listing data from Inside Airbnb"
+  },
+  {
+    "objectID": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html#r-packages-used",
+    "href": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html#r-packages-used",
+    "title": "Hands-on Exercise 1",
+    "section": "",
+    "text": "sf for importing, managing, and processing geospatial data, and\ntidyverse for performing data science tasks such as importing, wrangling and visualising data.\nreadr for importing csv data,\nreadxl for importing Excel worksheet,\ntidyr for manipulating data,\ndplyr for transforming data, and\nggplot2 for visualising data"
+  },
+  {
+    "objectID": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html#loading-of-r-packages",
+    "href": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html#loading-of-r-packages",
+    "title": "Hands-on Exercise 1",
+    "section": "",
+    "text": "pacman::p_load(sf, tidyverse)\n\nNote: p_load function of pacman package is used to install and load sf and tidyverse packages into R environment."
+  },
+  {
+    "objectID": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html#importing-geospatial-data",
+    "href": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html#importing-geospatial-data",
+    "title": "Hands-on Exercise 1",
+    "section": "",
+    "text": "mpsz = st_read(dsn = \"data/geospatial\", \n                  layer = \"MP14_SUBZONE_WEB_PL\")\n\nReading layer `MP14_SUBZONE_WEB_PL' from data source \n  `C:\\Users\\jia_y\\OneDrive - Singapore Management University\\Semester 4\\ISSS626-G1 Geo Spatial Analytics and Applications\\jylau91\\ISSS626-GAA\\Hands-on_Ex\\Hands-on_Ex01\\data\\geospatial' \n  using driver `ESRI Shapefile'\nSimple feature collection with 323 features and 15 fields\nGeometry type: MULTIPOLYGON\nDimension:     XY\nBounding box:  xmin: 2667.538 ymin: 15748.72 xmax: 56396.44 ymax: 50256.33\nProjected CRS: SVY21\n\n\nThe message above reveals that the geospatial objects are multipolygon features. There are a total of 323 multipolygon features and 15 fields in mpsz simple feature data frame. mpsz is in svy21 projected coordinates systems. The bounding box provides the x extend and y extend of the data.\nNote: arguments ‘dsn’ is to define the data path layer and ‘layer’ to define provide the shapefile name.\n###1.4.2 Importing polyline feature data inshapefile format\n\ncyclingpath = st_read(dsn = \"data/geospatial\",\n                      layer = \"CyclingPathGazette\")\n\nReading layer `CyclingPathGazette' from data source \n  `C:\\Users\\jia_y\\OneDrive - Singapore Management University\\Semester 4\\ISSS626-G1 Geo Spatial Analytics and Applications\\jylau91\\ISSS626-GAA\\Hands-on_Ex\\Hands-on_Ex01\\data\\geospatial' \n  using driver `ESRI Shapefile'\nSimple feature collection with 3138 features and 2 fields\nGeometry type: MULTILINESTRING\nDimension:     XY\nBounding box:  xmin: 11854.32 ymin: 28347.98 xmax: 42644.17 ymax: 48948.15\nProjected CRS: SVY21\n\n\nThe message above reveals that there are a total of 3138 features and 2 fields in cyclingpath linestring feature data frame and it is in svy21 projected coordinates system too.\n\n\n\n\npreschool = st_read(\"data/geospatial/PreSchoolsLocation.kml\")\n\nReading layer `PRESCHOOLS_LOCATION' from data source \n  `C:\\Users\\jia_y\\OneDrive - Singapore Management University\\Semester 4\\ISSS626-G1 Geo Spatial Analytics and Applications\\jylau91\\ISSS626-GAA\\Hands-on_Ex\\Hands-on_Ex01\\data\\geospatial\\PreSchoolsLocation.kml' \n  using driver `KML'\nSimple feature collection with 2290 features and 2 fields\nGeometry type: POINT\nDimension:     XYZ\nBounding box:  xmin: 103.6878 ymin: 1.247759 xmax: 103.9897 ymax: 1.462134\nz_range:       zmin: 0 zmax: 0\nGeodetic CRS:  WGS 84\n\n\nThe message above reveals that preschool is a point feature data frame. There are a total of 2290 features and 2 fields. Different from the previous two simple feature data frame, preschool is in wgs84 coordinates system."
+  },
+  {
+    "objectID": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html#checking-the-content-of-a-simple-feature-data-frame",
+    "href": "Hands-on_Ex/Hands-on_Ex01/Hands-on_Ex01.html#checking-the-content-of-a-simple-feature-data-frame",
+    "title": "Hands-on Exercise 1",
+    "section": "",
+    "text": "Retrieving information related to the content of a simple feature data frame."
   }
 ]
