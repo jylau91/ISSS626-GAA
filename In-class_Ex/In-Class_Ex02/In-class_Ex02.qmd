@@ -1,0 +1,82 @@
+---
+title: "In-class Exercise 2"
+author: "Lau Jia Yi"
+---
+
+```{r}
+#| eval: false
+install.packages("maptools", 
+                 repos = "https://packagemanager.posit.co/cran/2023-10-13")
+
+```
+
+```{r}
+pacman::p_load(sf, tidyverse, tmap, raster, spatstat)
+```
+
+```{r}
+mpsz <- st_read(dsn = "data/geospatial", 
+                layer = "MP14_SUBZONE_WEB_PL")
+```
+
+```{r}
+mpsz_sf <- st_read(dsn = "data/geospatial", layer = "MP14_SUBZONE_WEB_PL")
+```
+
+```{r}
+childcare_sf <- st_read("data/child-care-services-geojson.geojson") %>%
+  st_transform(crs = 3414)
+```
+
+```{r}
+#| warnings=false
+childcare_ppp <- as.ppp(childcare_sf)
+sg_owin <- as.owin(sg_sf)
+childcareSG_ppp = childcare_ppp[sg_owin]
+childcareSG_ppp.km <- rescale.ppp(childcareSG_ppp, 1000, "km")
+
+```
+
+```{r}
+kde_childcareSG_adaptive <- adaptive.density(childcareSG_ppp.km, method="kernel")
+plot(kde_childcareSG_adaptive)
+```
+
+## Working with st_union()
+
+The code chunk below, st_union() is used to derive the coastal outline
+
+```{r}
+sg_sf <- mpsz_sf %>%
+  st_union()
+
+```
+
+## Kernel Density Estimation
+
+```{r}
+par(bg = '#E4D5C9')
+
+gridded_kde_childcareSG_ad <- maptools::as.SpatialGridDataFrame.im(
+  kde_childcareSG_adaptive)
+spplot(gridded_kde_childcareSG_ad)
+```
+
+```{r}
+gridded_kde_childcareSG_ad <- as(
+  kde_childcareSG_adaptive,
+  "spatialGridDataFrame")
+spplot(gridded_kde_childcareSG_ad)
+```
+
+## Monte Carlo Simulation
+
+In order to ensure reproducibility, it is important to include the code chunk below before using spatstat functions using Monte Carlo simulation.
+
+```{r}
+set.seed(1234)
+```
+
+Geospatial Analytics for Social Good: Thailand Road Accident Case Study
+
+<https://www.who.int/health-topics/road-safety#tab=tab_1>
