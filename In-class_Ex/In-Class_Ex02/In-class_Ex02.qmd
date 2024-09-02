@@ -11,7 +11,7 @@ install.packages("maptools",
 ```
 
 ```{r}
-pacman::p_load(sf, tidyverse, tmap, raster, spatstat)
+pacman::p_load(sf, tidyverse, tmap, raster, spatstat, readr, sp)
 ```
 
 ```{r}
@@ -26,15 +26,19 @@ mpsz_sf <- st_read(dsn = "data/geospatial", layer = "MP14_SUBZONE_WEB_PL")
 ```{r}
 childcare_sf <- st_read("data/child-care-services-geojson.geojson") %>%
   st_transform(crs = 3414)
+sg_sf <- st_read(dsn = "data", layer="CostalOutline")
+mpsz_sf <- st_read(dsn = "data", 
+                layer = "MP14_SUBZONE_WEB_PL")
+
 ```
 
 ```{r}
-#| warnings=false
 childcare_ppp <- as.ppp(childcare_sf)
+```
+```{r}
 sg_owin <- as.owin(sg_sf)
 childcareSG_ppp = childcare_ppp[sg_owin]
 childcareSG_ppp.km <- rescale.ppp(childcareSG_ppp, 1000, "km")
-
 ```
 
 ```{r}
@@ -62,12 +66,6 @@ gridded_kde_childcareSG_ad <- maptools::as.SpatialGridDataFrame.im(
 spplot(gridded_kde_childcareSG_ad)
 ```
 
-```{r}
-gridded_kde_childcareSG_ad <- as(
-  kde_childcareSG_adaptive,
-  "spatialGridDataFrame")
-spplot(gridded_kde_childcareSG_ad)
-```
 
 ## Monte Carlo Simulation
 
@@ -80,3 +78,17 @@ set.seed(1234)
 Geospatial Analytics for Social Good: Thailand Road Accident Case Study
 
 <https://www.who.int/health-topics/road-safety#tab=tab_1>
+
+Importing Road Accident data for take home exercise 1
+
+```{r}
+rdacc_sf <- read_csv("data/thai_road_accident_2019_2022.csv") %>%
+  filter(!is.na(longitude) & longitude != "",
+         !is.na(latitude) & latitude != "") %>%
+  st_as_sf(coords = c(
+    "longitude", "latitude"),
+    crs=4326) %>%
+  st_transform(crs = 32647)
+
+rdacc_sf
+```
