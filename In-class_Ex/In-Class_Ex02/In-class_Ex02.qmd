@@ -79,7 +79,7 @@ Geospatial Analytics for Social Good: Thailand Road Accident Case Study
 
 <https://www.who.int/health-topics/road-safety#tab=tab_1>
 
-Importing Road Accident data for take home exercise 1
+## Importing Road Accident data for take home exercise 1
 
 ```{r}
 rdacc_sf <- read_csv("data/thai_road_accident_2019_2022.csv") %>%
