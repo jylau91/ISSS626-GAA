@@ -4,6 +4,6 @@ title: "ISSS626-GAA"
 
 Welcome to **ISSS626 Geospatial Analytics and Applications**. In this website, you will find my coursework prepared for this course.
 
-Note to Prof Kam: Still a WIP and I am catching up! Sorry for the late submission.
+Note to Prof Kam:
 
-![](images/clipboard-3338806282.png)
+![](images/all-caught-up-agnf.gif){fig-align="center"}
