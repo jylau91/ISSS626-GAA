@@ -1,6 +1,12 @@
 ---
 title: "In-Class_Ex03"
 author: "Lau Jia Yi"
+date-modified: "last-modified"
+execute:
+  eval: true
+  echo: true
+  freeze: true
+  warning: false
 ---
 
 ## **7.1 Overview**

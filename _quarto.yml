@@ -32,13 +32,22 @@ website:
             
           - text: "In-class Exercise 2"
             href: "In-class_Ex/In-Class_Ex02/In-Class_Ex02.html"
+            
+          - text: "In-class Exercise 3"
+            href: "In-class_Ex/In-Class_Ex03/In-Class_Ex03.html"
+
+          - text: "In-class Exercise 4"
+            href: "In-class_Ex/In-Class_Ex04/In-Class_Ex04.html"
+
+          - text: "In-class Exercise 5"
+            href: "In-class_Ex/In-Class_Ex05/In-Class_Ex05.html"
 
       - text: "Take-home Exercise"
         menu: 
           - text: "Take-home Exercise 1"
             href: "Take-home_Ex/Take-home_Ex01/Take-home_Ex01.html"
             
-          - text: "In-class Exercise 2"
+          - text: "Take-home Exercise 2"
             href: "Take-home_Ex/Take-home_Ex02/Take-home_Ex02.html"           
 
 

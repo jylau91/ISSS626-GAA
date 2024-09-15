@@ -1,0 +1,15 @@
+{
+  "hash": "2cae0f06189b1d04c3fa71e533a1e77f",
+  "result": {
+    "engine": "knitr",
+    "markdown": "---\ntitle: \"Take-home Exercise 1\"\nauthor: \"Lau Jia Yi\"\ndate: September 9, 2024\ndate-modified: \"last-modified\"\nexecute:\n  eval: true\n  echo: true\n  freeze: true\n  warning: false\n---\n\n::: {.cell}\n\n```{.r .cell-code}\npacman::p_load(sf, tidyverse, raster, tmap, spNetwork)\n```\n:::\n\n::: {.cell}\n\n```{.r .cell-code}\nacc <- read_csv(\"data/rawdata/thai_road_accident_2019_2022.csv\") %>%\n  mutate(Month_num = month(incident_datetime)) %>%\n  mutate(Month_fac = month(incident_datetime,\n                       label = TRUE,\n                       abbr = TRUE)) %>%\n  mutate(dayofweek = day(incident_datetime))\n```\n:::\n\n::: {.cell}\n\n```{.r .cell-code}\nwrite_rds(acc, \"data/rds/acc.rds\")  #to write accident file into rds\n```\n:::\n\n::: {.cell}\n\n```{.r .cell-code}\nacc <- read_rds(\"data/rds/acc.rds\") #to read accident file from rds\n```\n:::\n\n\n\n\n\n\n  #insert code here <--mutate & omit NA and missing with is.na on latitude field\n  st_as_sf(coords = c(\"longitude\", \"latitude\"),\n                        crs=4326) %>%\n  st_transform (crs= 32647) ##double check if it should use 32647 instead of 48 @ epsg.io\n```\n\n::: {.cell}\n\n```{.r .cell-code}\nwrite_rds(acc, \"data/rds/acc.rds\")\n```\n:::\n",
+    "supporting": [],
+    "filters": [
+      "rmarkdown/pagebreak.lua"
+    ],
+    "includes": {},
+    "engineDependencies": {},
+    "preserve": {},
+    "postProcess": true
+  }
+}

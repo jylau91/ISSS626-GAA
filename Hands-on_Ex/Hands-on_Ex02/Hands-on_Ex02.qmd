@@ -1,8 +1,13 @@
 ---
 title: "Hands-on Exercise 2"
 author: "Lau Jia Yi"
-Published: 03 Sep 2024
-Modified: last-modified
+date: 03 Sep 2024
+date-modified: "last-modified"
+execute:
+  eval: true
+  echo: true
+  freeze: true
+  warning: false
 ---
 
 # 2. 1st Order Spatial Point Patterns Analysis Methods

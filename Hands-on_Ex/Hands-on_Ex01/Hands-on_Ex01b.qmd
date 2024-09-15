@@ -367,25 +367,7 @@ Beside map style, **tmap** also also provides arguments to draw other map furnit
 
 In the code chunk below, *tm_compass()*, *tm_scale_bar()* and *tm_grid()* are used to add compass, scale bar and grid lines onto the choropleth map.
 
-```{r}
-tm_shape(mpsz_pop2020)+
-  tm_fill("DEPENDENCY", 
-          style = "quantile", 
-          palette = "Blues",
-          title = "No. of persons") +
-  tm_layout(main.title = "Distribution of Dependency Ratio \nby planning subzone",
-            main.title.position = "center",
-            main.title.size = 1.2,
-            legend.height = 0.45, 
-            legend.width = 0.35,
-            frame = TRUE) +
-  tm_borders(alpha = 0.5) +
-  tm_compass(type="8star", size = 2) +
-  tm_scale_bar(width = 0.15) +
-  tm_grid(lwd = 0.1, alpha = 0.2) +
-  tm_credits("Source: Planning Sub-zone boundary from Urban Redevelopment Authorithy (URA)\n and Population data from Department of Statistics DOS", 
-             position = c("left", "bottom"))
-```
+tm_shape(mpsz_pop2020)+ tm_fill("DEPENDENCY", style = "quantile", palette = "Blues", title = "No. of persons") + tm_layout(main.title = "Distribution of Dependency Ratio \nby planning subzone", main.title.position = "center", main.title.size = 1.2, legend.height = 0.45, legend.width = 0.35, frame = TRUE) + tm_borders(alpha = 0.5) + tm_compass(type="8star", size = 2) + tm_scale_bar(width = 0.15) + tm_grid(lwd = 0.1, alpha = 0.2) + tm_credits("Source: Planning Sub-zone boundary from Urban Redevelopment Authorithy (URA)\n and Population data from Department of Statistics DOS", position = c("left", "bottom"))
 
 To reset the default style, refer to the code chunk below.
 

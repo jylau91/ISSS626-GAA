@@ -1,4 +1,42 @@
 ---
-title: "Take-home_Ex01"
+title: "Take-home Exercise 1"
 author: "Lau Jia Yi"
+date: September 9, 2024
+date-modified: "last-modified"
+execute:
+  eval: true
+  echo: true
+  freeze: true
+  warning: false
 ---
+
+```{r}
+pacman::p_load(sf, tidyverse, raster, tmap, spNetwork)
+```
+
+```{r}
+acc <- read_csv("data/rawdata/thai_road_accident_2019_2022.csv") %>%
+  mutate(Month_num = month(incident_datetime)) %>%
+  mutate(Month_fac = month(incident_datetime,
+                       label = TRUE,
+                       abbr = TRUE)) %>%
+  mutate(dayofweek = day(incident_datetime))
+```
+```{r}
+write_rds(acc, "data/rds/acc.rds")  #to write accident file into rds
+```
+
+```{r}
+acc <- read_rds("data/rds/acc.rds") #to read accident file from rds
+```
+
+
+  #insert code here <--mutate & omit NA and missing with is.na on latitude field
+  st_as_sf(coords = c("longitude", "latitude"),
+                        crs=4326) %>%
+  st_transform (crs= 32647) ##double check if it should use 32647 instead of 48 @ epsg.io
+```
+
+```{r}
+write_rds(acc, "data/rds/acc.rds")
+```
