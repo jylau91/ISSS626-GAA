@@ -1,0 +1,155 @@
+---
+title: "In-Class Exercise 04"
+author: "Lau Jia Yi"
+date-modified: "last-modified"
+execute:
+  eval: true
+  echo: true
+  freeze: true
+  warning: false
+---
+
+## **4.1 Getting Started**
+
+Before we get started, we need to ensure that **GWmodel**, **sf**, **tmap** and **tidyverse** packages of R are currently installed in your R.
+
+```{r}
+pacman::p_load(sf, ggstatsplot, tmap, tidyverse, knitr,GWmodel)
+```
+
+```{r}
+hunan <- st_read(dsn = "data/geospatial", 
+                 layer = "Hunan")
+```
+
+```{r}
+hunan2012 <- read_csv("data/aspatial/Hunan_2012.csv")
+```
+
+```{r}
+hunan_sf <- left_join(hunan,hunan2012)%>%
+  select(1:3, 7, 15, 16, 31, 32) #selecting columns 1:3,7,15...etc to remove unneeded data.
+```
+
+```{r}
+hunan_sp <- hunan_sf %>%
+  as_Spatial()
+```
+
+```{r}
+bw_CV <- bw.gwr(GDPPC ~ 1,
+                data = hunan_sp,
+                approach = "AIC",
+                adaptive = TRUE,
+                kernel = "bisquare",
+                longlat = T)
+```
+
+```{r}
+bw_CV <- bw.gwr(GDPPC ~ 1,
+                data = hunan_sp,
+                approach = "CV",
+                adaptive = TRUE,
+                kernel = "bisquare",
+                longlat = T)
+
+#bw_CV <- bw.gwr(GDPPC ~ 1,#calculate via a linear regression model. GDPPC is dependent variable, ` is independent variable "dummy ~ 1, i.e. correlation of 1 = same so that the model can run a regression model"`
+#                data = hunan_sp,
+#                approach = "CV", #CV = cross validation ; AIC = Step AIC
+#                adaptive = TRUE, #adaptive bandwith ; false = fixed bandwith
+#                kernel = "bisquare", #similar to SPP
+#                longlat = T) #decimal degree = true, convert ALL distances to KM.
+```
+
+```{r}
+bw_CV
+
+#optimal number of neighbour is 22 for this region / map data.
+```
+
+```{r}
+bw_CV <- bw.gwr(GDPPC ~ 1,
+                data = hunan_sp,
+                approach = "AIC",
+                adaptive = FALSE,
+                kernel = "bisquare",
+                longlat = T)
+
+#distance = 160 when using AIC but distance = 80 when using CV.
+#adaptive CV and AIC will give the same result
+```
+
+```{r}
+bw_CV <- bw.gwr(GDPPC ~ 1,
+                data = hunan_sp,
+                approach = "CV",
+                adaptive = FALSE,
+                kernel = "bisquare",
+                longlat = T)
+
+bw_CV
+```
+
+```{r}
+bw_AIC <- bw.gwr(GDPPC ~ 1,
+                data = hunan_sp,
+                approach = "AIC",
+                adaptive = TRUE,
+                kernel = "bisquare",
+                longlat = T)
+```
+
+```{r}
+gwstat <- gwss(data = hunan_sp,
+               vars = "GDPPC",
+               bw = bw_AIC,
+               kernel = "bisquare",
+               adaptive = TRUE,
+               longlat = T)
+```
+
+Code chunk below is used to extract SDF data table from gwss object output from gwss(). It will be converted into data.frame by using as.data.frame().
+
+```{r}
+gwstat_df <- as.data.frame(gwstat$SDF)
+```
+
+Next, cbind() is used to append the newly derived data.frame onto hunan_sf sf data.frame.
+
+```{r}
+hunan_gstat <- cbind(hunan_sf, gwstat_df)
+```
+
+```{r}
+basemap <- tm_shape(hunan) +
+  tm_polygons() +
+  tm_text("NAME_3", size=0.5)
+
+gdppc <- qtm(hunan_gstat, "GDPPC") +
+  tm_fill(palette=c("yellow", "orange", "red")) +
+  tm_legend(position=c("left", "bottom"),
+             text.size = 0.4,
+            frame=FALSE)
+
+tmap_arrange(gdppc, asp=1)
+
+
+```
+
+```{r}
+tm_shape(hunan_gstat) +
+  tm_fill("GDPPC_LM",
+          n = 5,
+          style = "quantile") +
+  tm_borders(alpha = 0.5) +
+  tm_layout(main.title = "Distribution of geographically weighted mean",
+            main.title.position = "center",
+            main.title.size = 1.0,
+            legend.position = c("left","bottom"),
+            legend.text.size = 0.5,
+            legend.height = 1.50,
+            legend.width = 1.50,
+            frame = TRUE)
+```
+
+Is there a relationship between GDP per capita and Gross Industry output?
