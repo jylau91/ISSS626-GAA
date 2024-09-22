@@ -166,6 +166,7 @@ ggplot(accident_summary, aes(x = Month_num, y = accident_count, fill = ADM1_EN))
   scale_x_continuous(breaks = 1:12, labels = month.abb) +
   theme_minimal()
 ```
+
 ```{r}
 # Merge accident_summary with admin_selected to have spatial data
 admin_selected_with_accidents <- admin_selected %>%
