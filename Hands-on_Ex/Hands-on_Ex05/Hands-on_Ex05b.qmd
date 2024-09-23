@@ -7,6 +7,7 @@ execute:
   eval: true
   echo: true
   warning: false
+  freeze: true
 ---
 
 # **10  Local Measures of Spatial Autocorrelation**
