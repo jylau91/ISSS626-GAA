@@ -7,6 +7,7 @@ execute:
   eval: true
   echo: true
   warning: false
+  freeze: true
 ---
 
 # **Take-home Exercise 1: Geospatial Analytics for Public Good**
@@ -689,17 +690,17 @@ samples_projected$density <- samples_projected$density*1000
 lixels$density <- lixels$density*1000
 ```
 
-```{r}
+```{r eval=FALSE}
 tmap_mode('view')
 ```
 
-```{r}
+```{r eval=FALSE}
 tm_shape(lixels)+
   tm_lines(col="density")+
 tm_shape(acc_bkk_32647)+
   tm_dots()
 ```
 
-```{r}
+```{r eval=FALSE}
 tmap_mode('plot')
 ```
