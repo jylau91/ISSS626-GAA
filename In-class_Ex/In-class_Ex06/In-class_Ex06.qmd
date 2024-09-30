@@ -1,0 +1,70 @@
+---
+title: "In-class Exercise 06"
+author: "Lau Jia Yi"
+date: September 30, 2024
+date-modified: "last-modified"
+execute:
+  eval: true
+  echo: true
+  warning: false
+  freeze: true
+---
+
+## Installing and loading the R Packages
+
+```{r}
+pacman::p_load(sf, sfdep, tmap, plotly, tidyverse)
+```
+
+```{r}
+hunan <- st_read(dsn = "data/geospatial",
+                 layer = "Hunan")
+```
+
+```{r}
+GDPPC <- read_csv("data/aspatial/Hunan_GDPPC.csv")
+```
+
+```{r}
+GDPPC_st <- spacetime(GDPPC, hunan,
+                      .loc_col = "County",
+                      .time_col = "Year")
+```
+
+```{r}
+is_spacetime_cube(GDPPC_st)
+```
+
+Note: GDPPC_st is an object class that will help to find the lookup on the data structure for timespace data. At the data table level, it will be identical to GDPPC.
+
+## Computing Gi
+
+Computing the local Gi\* statistics.
+
+## Deriving the spatial weights
+
+The code chunk below will be used to identify neighbors and to derive an inverse distance weights.
+
+```{r}
+GDPPC_nb <- GDPPC_st %>%
+  activate("geometry") %>% # use the geometry attributes and ignore the rest
+  mutate(nb = include_self( #Gi* = include self, if no * dont include self.
+    st_contiguity(geometry)),
+    wt = st_inverse_distance(nb, #inverse data weight - for Gi*
+                             geometry,
+                             scale = 1,
+                             alpha = 1),
+    .before = 1) %>%
+  set_nbs("nb") %>%
+  set_wts("wt")
+
+```
+
+```{r}
+gi_stars <- GDPPC_nb %>%
+  group_by(Year) %>%
+  mutate(gi_star = local_gstar_perm(
+    GDPPC, nb, wt)) %>%
+  tidyr::unnest(gi_star)
+  ))
+```
