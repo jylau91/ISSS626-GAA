@@ -13,7 +13,7 @@ execute:
 ## Installing and loading the R Packages
 
 ```{r}
-pacman::p_load(sf, sfdep, tmap, plotly, tidyverse)
+pacman::p_load(sf, sfdep, tmap, plotly, tidyverse, Kendall)
 ```
 
 ```{r}
@@ -66,5 +66,115 @@ gi_stars <- GDPPC_nb %>%
   mutate(gi_star = local_gstar_perm(
     GDPPC, nb, wt)) %>%
   tidyr::unnest(gi_star)
-  ))
+
+```
+
+Note: after the data is built into a flat file \<- further analysis can be done. i.e. via MK test (Mann-Kendall).
+
+MK Test to test if data exhibiits monotonic or non-monotonic trend. Best practice is to have minimum 10 data points (years) and 12 for further analysis.
+
+A monotonic series or function is one that only increases (or decreases and never changes direction. So long as the function either stays flat or continues to increase, it is monotonic.
+
+H0: No Monotonic trend.
+
+H1: Monotonic trend is present.
+
+Reject null if p-value is smaller than alpha.
+
+Tau ranges between -1 and 1 where:
+
+-1 is a perfectly decreasing series, and
+
+1 is a perfectly increasing series.
+
+```{r}
+cbg <- gi_stars %>%
+  ungroup() %>%
+  filter(County == "Changsha") %>%
+  select(County, Year, gi_star)
+```
+
+```{r}
+ggplot(data = cbg,
+       aes(x=Year,
+           y= gi_star)) +
+  geom_line() +
+  theme_light()
+```
+
+```{r}
+p <- ggplot(data = cbg,
+       aes(x=Year,
+           y= gi_star)) +
+  geom_line() +
+  theme_light()
+
+ggplotly(p)
+```
+
+```{r}
+cbg %>%
+  summarise (mk = list(
+    unclass(
+      Kendall::MannKendall(gi_star)))) %>%
+  tidyr::unnest_wider(mk)
+```
+
+```{r}
+ehsa <- gi_stars %>%
+  group_by(County) %>%
+  summarise(mk = list (
+    unclass(
+      Kendall::MannKendall(gi_star)))) %>%
+  tidyr::unnest_wider(mk)
+head(ehsa)
+
+```
+
+```{r}
+set.seed(8888)
+ehsa <- emerging_hotspot_analysis(
+  x = GDPPC_st,
+  .var = "GDPPC",
+  k = 1,
+  nsim = 99
+)
+```
+
+```{r}
+head(ehsa)
+```
+
+```{r}
+hunan_ehsa <- hunan %>%
+  left_join(ehsa,
+            by = join_by(County == location))
+```
+
+```{r}
+ehsa_sig <- hunan_ehsa %>%
+  filter(p_value < 0.05)
+tmap_mode("plot")
+tm_shape(hunan_ehsa) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(ehsa_sig) +
+  tm_fill("classification") +
+  tm_borders(alpha = 0.4)
+```
+
+```{r}
+ehsa_sig <- hunan_ehsa %>%
+  filter(p_value < 0.05) %>%
+  filter(classification %in% list("sporadic hotspot",
+                                  "oscilating hotspot",
+                                  "sporadic coldspot",
+                                  "oscilating coldspot"))
+tmap_mode("plot")
+tm_shape(hunan_ehsa) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(ehsa_sig) +
+  tm_fill("classification") +
+  tm_borders(alpha = 0.4)
 ```
