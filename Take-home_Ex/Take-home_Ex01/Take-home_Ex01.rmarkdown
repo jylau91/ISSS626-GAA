@@ -1,0 +1,815 @@
+---
+title: "Take-home Exercise 1"
+author: "Lau Jia Yi"
+date: September 9, 2024
+date-modified: "last-modified"
+execute:
+  eval: true
+  echo: true
+  warning: false
+  freeze: true
+---
+
+
+
+# **Take-home Exercise 1: Geospatial Analytics for Public Good**
+
+## Description
+
+The specific objectives of this take-home exercise are as follows:
+
+-   To visualize the spatio-temporal dynamics of road traffic accidents in BMR using appropriate statistical graphics and geovisualization methods.
+
+-   To conduct detailed spatial analysis of road traffic accidents using appropriate Network Spatial Point Patterns Analysis methods.
+
+-   To conduct detailed spatio-temporal analysis of road traffic accidents using appropriate Temporal Network Spatial Point Patterns Analysis methods.
+
+## Loading the packages required
+
+
+
+```{r}
+pacman::p_load(sf, tidyverse, raster, tmap, spNetwork,dplyr, viridis, spatstat)
+```
+
+
+
+## Loading Road Accident data in Thailand
+
+
+
+```{r eval=FALSE}
+acc <- read_csv("data/rawdata/thai_road_accident_2019_2022.csv") %>%
+  mutate(Month_num = month(incident_datetime)) %>%
+  mutate(Month_fac = month(incident_datetime,
+                       label = TRUE,
+                       abbr = TRUE)) %>%
+  mutate(dayofweek = day(incident_datetime))
+```
+
+```{r eval=FALSE}
+write_rds(acc, "data/rds/acc.rds")  #to write accident file into rds
+```
+
+```{r}
+acc <- read_rds("data/rds/acc.rds") #to read accident file from rds
+acc_sf <- acc %>%
+  filter(!is.na(longitude) & !is.na(latitude)) %>%
+  st_as_sf(coords = c("longitude", "latitude")) %>%
+  st_set_crs(4326)
+```
+
+```{r eval=FALSE}
+roads <- st_read(dsn = "data/rawdata/",
+                            layer = "hotosm_tha_roads_lines_shp")
+```
+
+```{r eval=FALSE}
+roads <- st_set_crs(roads, 4326)
+```
+
+```{r eval=FALSE}
+st_crs(roads)
+```
+
+```{r eval=FALSE}
+head(roads)
+```
+
+
+
+Note: to select columns name_en, highway, surface, lanes, osm_id, osm_type, geometry
+
+
+
+```{r eval=FALSE}
+# Select the desired columns
+selected_cols <- c("name_en", "highway", "surface", "lanes", "osm_id", "osm_type", "geometry")
+roads_selected <- roads[, selected_cols]
+```
+
+```{r eval=FALSE}
+head(roads_selected)
+```
+
+```{r eval=FALSE}
+write_rds(roads_selected, "data/rds/road_selected.rds")  #to write roads file into rds
+```
+
+```{r}
+roads_selected <- read_rds("data/rds/road_selected.rds") #to read roads file from rds
+```
+
+```{r}
+head(roads_selected)
+```
+
+```{r}
+admin_boundaries <- st_read(dsn = "data/rawdata/",
+                            layer = "tha_admbnda_adm1_rtsd_20220121")
+```
+
+```{r eval=FALSE}
+head(admin_boundaries)
+```
+
+```{r}
+admin_population <- read_csv("data/rawdata/bmr_population.csv")
+```
+
+```{r}
+admin_selected <- admin_boundaries %>%
+  filter(ADM1_EN %in% 
+           c("Bangkok", "Samut Prakan", "Nonthaburi", "Pathum Thani", "Nakhon Pathom", "Samut Sakhon")) %>%
+  left_join(admin_population, by ="ADM1_EN")
+```
+
+```{r}
+acc_sf_within_bmr <- st_join(acc_sf, admin_selected) %>%
+  filter(!is.na(ADM1_EN))
+```
+
+```{r eval=FALSE}
+roads_within_bmr <- st_join(roads_selected, admin_selected) %>%
+  filter(!is.na(ADM1_EN))
+```
+
+```{r  eval=FALSE}
+write_rds(roads_within_bmr, "data/rds/road_within_bmr.rds")  #to write roads in BMR file into rds
+```
+
+```{r}
+roads_within_bmr <- read_rds("data/rds/road_within_bmr.rds") #to read roads file from rds
+```
+
+```{r eval = FALSE}
+tm_shape(roads_within_bmr) +
+  tm_lines()
+```
+
+```{r eval=FALSE}
+tm_shape(roads_within_bmr) +
+  tm_lines() +
+  tm_shape(acc_sf_within_bmr) +
+  tm_dots(col = "red")
+```
+
+```{r}
+tmap_mode("plot")
+```
+
+```{r eval=FALSE}
+qtm(acc_sf_within_bmr,)
+```
+
+```{r}
+accident_summary <- acc_sf_within_bmr %>%
+  group_by(ADM1_EN, Month_num) %>%
+  summarise(accident_count = n(), groups = 'drop')
+```
+
+```{r}
+# Create a monthly accident count plot
+ggplot(accident_summary, aes(x = Month_num, y = accident_count, fill = ADM1_EN)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Monthly Road Traffic Accidents in BMR",
+       x = "Month",
+       y = "Accident Count") +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  theme_minimal()
+```
+
+```{r}
+# Merge accident_summary with admin_selected to have spatial data
+admin_selected_with_accidents <- admin_selected %>%
+  st_join(accident_summary, join = st_intersects) %>%
+  mutate(accident_density = accident_count / (population/10000))
+
+# Check if accident counts are merged properly
+head(admin_selected_with_accidents)
+```
+
+```{r}
+tm_shape(admin_selected_with_accidents) +
+  tm_fill("accident_count", style = "quantile", palette = "Blues", title = "Accident Count") +
+  tm_borders(col = "black") +
+    tm_text("ADM1_EN.x") +  # Add province names as labels
+  tm_layout(title = "Accident Count by Region",
+            title.size= 1.2,
+            legend.title.size = 0.9,
+            legend.title.fontface = "bold",
+            legend.position = c("left","bottom"))
+```
+
+```{r}
+tm_shape(admin_selected) +
+  tm_fill("population", style = "quantile", palette = "Blues", title = "Population") +
+  tm_borders(col = "black") +
+    tm_text("ADM1_EN") +  # Add province names as labels
+  tm_layout(title = "Population by Region",
+            title.size= 1.2,
+            legend.title.size = 0.9,
+            legend.title.fontface = "bold",
+            legend.position = c("left","bottom"))
+```
+
+
+
+Obtain 2020 population data: <https://www.citypopulation.de/en/thailand/prov/admin/B__bangkok_metropolitan/>
+
+## Visual by density instead
+
+
+
+```{r}
+# Create a monthly accident count plot
+ggplot(admin_selected_with_accidents, aes(x = Month_num, y = accident_density, fill = ADM1_EN.x)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Monthly Road Traffic Accidents in BMR",
+       x = "Month",
+       y = "Accident Count") +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  theme_minimal()
+```
+
+
+
+### Events in April leading to the increase in accidents
+
+Songkran in Thailand (<https://www.statista.com/topics/11546/songkran-in-thailand/#topicOverview>)
+
+
+
+```{r}
+tm_shape(admin_selected_with_accidents) +
+  tm_fill("accident_density", style = "quantile", palette = "Blues", title = "Accident Density") +
+  tm_borders(col = "black") +
+    tm_text("ADM1_EN.x") +  # Add province names as labels
+  tm_layout(title = "Accident Population Density (per 10'000) by Region",
+            title.size= 1.2,
+            legend.title.size = 0.8,
+            legend.title.fontface = "bold",
+            legend.position = c("left","bottom"))
+```
+
+
+
+## Spatial Point Pattern Analysis
+
+
+
+```{r}
+# Transform accident data to UTM Zone 47N
+acc_sf_projected <- st_transform(acc_sf_within_bmr, crs = 32647)
+
+# Transform admin boundaries to UTM Zone 47N if necessary
+admin_selected_proj <- st_transform(admin_selected, crs = 32647)
+```
+
+```{r}
+# Cast to MULTIPOLYGON if necessary
+admin_selected_multipolygon <- st_cast(admin_selected_proj, "MULTIPOLYGON")
+
+# Create a window from the admin boundaries
+window <- as.owin(st_geometry(admin_selected_multipolygon))
+```
+
+```{r}
+# Extract coordinates from projected accident data
+coords <- st_coordinates(acc_sf_projected)
+
+# Create the point pattern object
+accidents_ppp <- ppp(x = coords[, 1], 
+                      y = coords[, 2], 
+                      window = window)
+
+```
+
+```{r eval=FALSE}
+class(accidents_ppp)  # Should return "ppp"
+summary(accidents_ppp)  # Summary of the point pattern
+
+```
+
+```{r}
+# Create a spatial point pattern object
+accident_ppp <- ppp(st_coordinates(acc_sf_projected)[, 1], 
+                    st_coordinates(acc_sf_projected)[, 2],
+                    window = as.owin(admin_selected_multipolygon))
+
+```
+
+```{r}
+kde_result <- density(accident_ppp, sigma = bw.ppl(accident_ppp))
+plot(kde_result, main = "Kernel Density Estimate of Accidents per Metre")
+```
+
+
+
+Rescale the unit of measurement from meter to kilometer as CRS EPSG:32647 (WGS84) is in metres.
+
+
+
+```{r}
+accident_ppp.km <- rescale.ppp(accident_ppp, 1000, "km")
+```
+
+```{r}
+kde_result.km <- density(accident_ppp.km, sigma=bw.ppl, edge=TRUE, kernel="gaussian")
+plot(kde_result.km, main = "Kernel Density Estimate of Accidents per Kilometre")
+```
+
+```{r eval=FALSE}
+bw <- bw.ppl(accident_ppp.km)
+bw
+```
+
+
+
+## Computing KDE by using fixed bandwith
+
+
+
+```{r}
+kde_result.km_500 <- density(accident_ppp.km, sigma=0.5, edge=TRUE, kernel="gaussian")
+plot(kde_result.km_500)
+
+```
+
+
+
+## Computing KDE by using adaptive bandwith
+
+
+
+```{r}
+kde_result.km_adaptive <- adaptive.density(accident_ppp.km, method="kernel")
+plot(kde_result.km_adaptive)
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(kde_result.km_500, main = "Fixed bandwidth")
+plot(kde_result.km_adaptive, main = "Adaptive bandwidth")
+```
+
+
+
+## Converting KDE into a grid object
+
+
+
+```{r}
+kde_result.km_500
+```
+
+```{r}
+# Extract the pixel coordinates and values from the 'im' object
+coords <- expand.grid(x = kde_result.km_500$xcol, y = kde_result.km_500$yrow)
+values <- as.vector(t(kde_result.km_500$v))
+```
+
+```{r}
+# Create a SpatialPixelsDataFrame
+sp_pixels <- SpatialPixelsDataFrame(points = coords, 
+                                    data = data.frame(value = values), 
+                                    proj4string = CRS(as.character(NA)))
+```
+
+```{r}
+# Convert the SpatialPixelsDataFrame to a SpatialGridDataFrame
+gridded_kde_result.km_500 <- as(sp_pixels, "SpatialGridDataFrame")
+```
+
+```{r}
+# Use spplot to plot the SpatialGridDataFrame
+spplot(gridded_kde_result.km_500)
+```
+
+
+
+## Converting grid output into a raster
+
+
+
+```{r}
+kde_result.km_500_raster <- raster(kde_result.km_500)
+kde_result.km_500_raster
+```
+
+```{r}
+projection(kde_result.km_500_raster) <- CRS("+init=EPSG:32647")
+kde_result.km_500_raster
+```
+
+
+
+## Visualising the output in tmap
+
+
+
+```{r}
+tm_shape(kde_result.km_500_raster) + 
+  tm_raster("layer", palette = "viridis") +
+  tm_layout(legend.position = c("left", "bottom"), frame = TRUE)
+```
+
+```{r}
+nonthaburi <- admin_selected_multipolygon %>%
+  filter(ADM1_EN == "Nonthaburi")
+
+pathum_thani <- admin_selected_multipolygon %>%
+  filter(ADM1_EN == "Pathum Thani")
+
+bangkok <- admin_selected_multipolygon %>%
+  filter(ADM1_EN == "Bangkok")
+
+samut_prakan <- admin_selected_multipolygon %>%
+  filter(ADM1_EN == "Samut Prakan")
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(nonthaburi, main = "Nonthaburi")
+plot(pathum_thani, main = "Pathum Thani")
+plot(bangkok, main = "Bangkok")
+plot(samut_prakan, main = "Samut Prakan")
+```
+
+
+
+Creating owins for SPP analysis of each individual province
+
+
+
+```{r}
+nonthaburi_owin = as.owin(nonthaburi)
+pathum_thani_owin = as.owin(pathum_thani)
+bangkok_owin = as.owin(bangkok)
+samut_prakan_owin = as.owin(samut_prakan)
+```
+
+
+
+Extract accidents at each specific province of BMR.
+
+
+
+```{r}
+accident_nonthaburi_ppp = accident_ppp[nonthaburi_owin]
+accident_pathum_thani_ppp = accident_ppp[pathum_thani_owin]
+accident_bangkok_ppp = accident_ppp[bangkok_owin]
+accident_samut_prakan_ppp = accident_ppp[samut_prakan_owin]
+```
+
+
+
+Next, *rescale.ppp()* function is used to trasnform the unit of measurement from metre to kilometre.
+
+
+
+```{r}
+accident_nonthaburi_ppp.km = rescale.ppp(accident_nonthaburi_ppp, 1000, "km")
+accident_pathum_thani_ppp.km = rescale.ppp(accident_pathum_thani_ppp, 1000, "km")
+accident_bangkok_ppp.km = rescale.ppp(accident_bangkok_ppp, 1000, "km")
+accident_samut_prakan_ppp.km = rescale.ppp(accident_samut_prakan_ppp, 1000, "km")
+```
+
+
+
+To plot the four provinces of interest and their accident cases.
+
+
+
+```{r}
+par(mfrow=c(1,1))
+plot(accident_nonthaburi_ppp.km, main="Nonthaburi")
+plot(accident_pathum_thani_ppp.km, main="Pathum Thani")
+plot(accident_bangkok_ppp.km, main="Bangkok")
+plot(accident_samut_prakan_ppp.km, main="Samut Prakan")
+```
+
+
+
+Plotting the KDE of these four provinces of interest using bw.diggle method to derive the bandwith of each province.
+
+
+
+```{r}
+par(mfrow=c(1,1))
+plot(density(accident_nonthaburi_ppp.km, 
+             sigma=bw.diggle, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Nonthaburi")
+plot(density(accident_pathum_thani_ppp.km, 
+             sigma=bw.diggle, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Pathum Thani")
+plot(density(accident_bangkok_ppp.km, 
+             sigma=bw.diggle, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Bangkok")
+plot(density(accident_samut_prakan_ppp.km, 
+             sigma=bw.diggle, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Samut Prakan")
+```
+
+
+
+Computing fixed bandwith KDE
+
+For comparison purposes, we will use 350m as the bandwith.
+
+
+
+```{r}
+par(mfrow=c(1,1))
+plot(density(accident_nonthaburi_ppp.km, 
+             sigma=0.35, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Nonthaburi")
+plot(density(accident_pathum_thani_ppp.km, 
+             sigma=0.35, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Pathum Thani")
+plot(density(accident_bangkok_ppp.km, 
+             sigma=0.35, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Bangkok")
+plot(density(accident_samut_prakan_ppp.km, 
+             sigma=0.35, 
+             edge=TRUE, 
+             kernel="gaussian"),
+     main="Samut Prakan")
+```
+
+
+
+## Nearest Neighbour Analysis
+
+In this section, we will perform the Clark-Evans test of aggregation for a spatial point pattern by using clarkevans.test() of statspat.
+
+The test hypotheses are:
+
+Ho = The distribution of accidents are randomly distributed.
+
+H1= The distribution of accidents are not randomly distributed.
+
+The 95% confident interval will be used.
+
+### Clarks and Evans Test (Bangkok Metropolitan Area)
+
+
+
+```{r}
+clarkevans.test(accident_ppp,
+                correction="none",
+                clipregion="window",
+                alternative=c("clustered"),
+                nsim=99)
+```
+
+
+
+R-value (Clark-Evans ratio) of less than 1 in this set of test results indicates clustering.
+
+The p-value \< 2.2e-16, is a very small p-value ( \<0.05 - 95% significance level) suggests that the test result is statistically significant. The null hypothesis of CSR (randomness) can be rejected.
+
+The spatial point pattern for accident_ppp shows a significant degree of clustering (R\<1), given the small p-value we have sufficient evidence to reject the null hypothesis that the points are not randomly distributed and is clustered as the R-value is less than 1.
+
+### Clarks and Evans Test (Nonthaburi)
+
+
+
+```{r}
+clarkevans.test(accident_nonthaburi_ppp,
+                correction="none",
+                clipregion="window",
+                alternative=c("clustered"),
+                nsim=99)
+```
+
+
+
+### Clarks and Evans Test (Pathum Thani)
+
+
+
+```{r}
+clarkevans.test(accident_pathum_thani_ppp,
+                correction="none",
+                clipregion="window",
+                alternative=c("clustered"),
+                nsim=99)
+```
+
+
+
+### Clarks and Evans Test (Bangkok)
+
+
+
+```{r}
+clarkevans.test(accident_bangkok_ppp,
+                correction="none",
+                clipregion="window",
+                alternative=c("clustered"),
+                nsim=99)
+```
+
+
+
+### Clarks and Evans Test (Samut Prakan)
+
+
+
+```{r}
+clarkevans.test(accident_samut_prakan_ppp,
+                correction="none",
+                clipregion="window",
+                alternative=c("clustered"),
+                nsim=99)
+```
+
+
+
+R-value (Clark-Evans ratio) is observed to be less than 1 for all four areas of interest.
+
+The p-value \< 2.2e-16, is a very small p-value ( \<0.05 - 95% significance level) suggests that the test results are statistically significant. The null hypothesis of CSR (randomness) can be rejected.
+
+The spatial point pattern for all accident spatial points in four provinces shows a significant degree of clustering (R\<1), given the small p-value we have sufficient evidence to reject the null hypothesis that the points are not randomly distributed and is clustered as the R-value is less than 1.
+
+## SPP Analysis by Months
+
+
+
+```{r}
+# Transform accident data to UTM Zone 47N
+# Split accident data by Month_num
+accidents_by_month <- split(acc_sf_projected, acc_sf_projected$Month_num)
+
+# Create an empty list to store the ppp objects for each month
+ppp_list <- list()
+
+# Loop through each month and create a ppp object
+for (i in 1:12) {
+  # Extract accidents for the current month
+  acc_month <- accidents_by_month[[i]]
+  
+  # Create a ppp object for the current month
+  ppp_list[[i]] <- ppp(st_coordinates(acc_month)[, 1], 
+                       st_coordinates(acc_month)[, 2],
+                       window = as.owin(admin_selected_multipolygon))
+}
+
+# Optionally, name each ppp object by month
+names(ppp_list) <- month.abb[1:12]
+
+# Check the ppp object for January (example)
+ppp_list[["Jan"]]
+```
+
+```{r}
+# Create an empty list to store the KDE results for each month
+kde_results <- list()
+
+# Loop through each month to perform KDE
+for (i in 1:12) {
+  # Extract the ppp object for the current month
+  accident_ppp_month <- ppp_list[[i]]
+  
+  # Perform KDE for the current month's ppp object
+  kde_results[[i]] <- density(accident_ppp_month, sigma = 0.5, edge = TRUE, kernel = "gaussian")
+}
+
+# Optionally, name each KDE result by month
+names(kde_results) <- month.abb[1:12]
+
+```
+
+```{r}
+# Set up a 3x4 plotting grid
+par(mfrow = c(1, 1))
+
+# Loop through the months and plot the KDE for each month
+for (i in 1:12) {
+  plot(kde_results[[i]], main = month.abb[i], col = viridis::viridis(100),
+       xlab = "X", ylab = "Y", las = 1)
+}
+
+
+```
+
+
+
+## Network KDE (NKDE) Analysis
+
+In this section, we will perform NKDE analysis by using functions provided in spNetwork package.
+
+Spatial Lines (road network) object in BMR is cut into lixels.
+
+
+
+```{r}
+roads_within_bkk <- roads_within_bmr %>%
+  filter(ADM1_EN =="Bangkok")
+
+acc_sf_projected_bkk <- acc_sf_projected %>%
+  filter(ADM1_EN =="Bangkok")
+```
+
+```{r}
+lixels <- lixelize_lines(roads_within_bkk, 
+                         500, 
+                         mindist = 350)
+```
+
+
+
+Generating samples of the road network using lines_center() of spNetwork.
+
+
+
+```{r}
+samples <-lines_center(lixels)
+```
+
+
+
+Perform NKDE
+
+
+
+```{r}
+acc_bkk_32647 <- st_zm(acc_sf_projected_bkk)
+acc_bkk_32647
+```
+
+```{r}
+roads_within_bkk_simple <- st_cast(roads_within_bkk, "LINESTRING")
+roads_within_bkk_simple_projected <- st_transform(roads_within_bkk_simple,crs = 32647)
+samples_projected <- st_transform(samples,crs = 32647)
+
+#st_crs(roads_within_bmr_simple_projected)
+#st_crs(samples_projected)
+
+```
+
+```{r eval=FALSE}
+densities <- nkde(roads_within_bkk_simple_projected, 
+                  events = acc_bkk_32647,
+                  w = rep(1, nrow(acc_bkk_32647)),
+                  samples = samples_projected,
+                  kernel_name = "quartic",
+                  bw = 250, 
+                  div= "bw", 
+                  method = "simple", 
+                  digits = 1, 
+                  tol = 1,
+                  grid_shape = c(5,5), 
+                  max_depth = 8,
+                  agg = 5, 
+                  sparse = TRUE,
+                  verbose = FALSE)
+```
+
+```{r eval=FALSE}
+write_rds(densities, "data/rds/densities.rds")  #to write densities file into rds
+```
+
+```{r}
+densities <- read_rds("data/rds/densities.rds") #to read densities from rds
+```
+
+```{r}
+samples_projected$density <- densities
+lixels$density <- densities
+
+# rescaling to help the mapping
+samples_projected$density <- samples_projected$density*1000
+lixels$density <- lixels$density*1000
+```
+
+```{r eval=FALSE}
+tmap_mode('view')
+```
+
+```{r eval=FALSE}
+tm_shape(lixels)+
+  tm_lines(col="density")+
+tm_shape(acc_bkk_32647)+
+  tm_dots()
+```
+
+```{r eval=FALSE}
+tmap_mode('plot')
+```
+

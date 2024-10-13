@@ -1,0 +1,207 @@
+---
+title: "In-class Exercise 05"
+author: "Lau Jia Yi"
+date: September 23, 2024
+date-modified: "last-modified"
+execute:
+  eval: true
+  echo: true
+  warning: false
+  freeze: true
+---
+
+```{r}
+pacman::p_load(sf, sfdep, tmap, tidyverse)
+```
+
+```{r}
+hunan <- st_read(dsn = "data/geospatial", 
+                 layer = "Hunan")
+```
+
+```{r}
+hunan2012 <- read_csv("data/aspatial/Hunan_2012.csv")
+```
+
+```{r}
+hunan_GDPPC <- left_join(hunan,hunan2012) %>%
+  select(1:4, 7, 15)
+```
+
+```{r}
+wm_q <- hunan_GDPPC %>%
+  mutate(nb = st_contiguity(geometry),
+         wt=st_weights(nb,
+                       style="W"),
+         .before = 1) #append to the front
+```
+
+
+
+## Global Moran'I Statistic
+
+
+
+```{r}
+moranI <- global_moran(wm_q$GDPPC,
+                       wm_q$nb,
+                       wm_q$wt)
+moranI # no use as this just the MoranI statistic.
+```
+
+
+
+## Global Moran'I Test
+
+
+
+```{r}
+global_moran_test(wm_q$GDPPC,#to use for testing on randomisation
+                  wm_q$nb,
+                  wm_q$wt)
+```
+
+
+
+-   **Significant Spatial Autocorrelation:**
+
+    -   The Moran I statistic is 0.3007, which is significantly different from zero (p-value = 1.095e-06).
+
+    -   This indicates that there is a significant degree of spatial autocorrelation in the data.
+
+-   **Positive Spatial Autocorrelation:**
+
+    -   The Moran I statistic is positive, suggesting that similar values tend to be clustered together in space.
+
+-   **Strong Spatial Clustering:**
+
+    -   The standard deviation of the Moran I statistic is 4.7351, which is relatively high. This suggests that the spatial clustering is quite strong.
+
+## Performing Global Moran'I permutation test
+
+
+
+```{r}
+set.seed(1234)
+```
+
+
+
+wm_q\$nb
+
+
+
+```{r}
+global_moran_perm(wm_q$GDPPC, #permutation test (on simulations)
+                  wm_q$nb,
+                  wm_q$wt,
+                  nsim=99) #try 99(100-1) as a baseline - no right / wrong number of simulations required.
+                  
+```
+
+```{r}
+lisa <- wm_q %>%
+  mutate(local_moran = local_moran(
+    GDPPC, nb, wt, nsim = 99),
+        .before = 1) %>%
+  unnest(local_moran) #unnest function will write back into tibblr data frame
+
+
+#HH/LL cluster or HL/LH outliers, mean - normal distribution / median - skeweed data / pysal
+#rely on overall dataset's distribution instead of specific segment's distribution
+  
+```
+
+
+
+## Visualising local Moran's I
+
+In this code chunk below, tmap functions are used to prepare a chloropleth map by using value in the ii field.
+
+
+
+```{r}
+tmap_mode("plot")
+tm_shape(lisa) +
+  tm_fill("ii") +
+  tm_borders(alpha = 0.5) +
+  tm_view(set.zoom.limits = c(6,8)) +
+  tm_layout(
+    main.title = "local Moran's I of G",
+    main.title.size = 2)
+```
+
+```{r}
+tmap_mode("plot")
+map1 <- tm_shape(lisa) +
+  tm_fill("ii") +
+  tm_borders(alpha = 0.5) +
+  tm_view(set.zoom.limits = c(6,8)) +
+  tm_layout(
+    main.title = "local Moran's I of G",
+    main.title.size = 2)
+
+map2 <- tm_shape(lisa) +
+  tm_fill("p_ii",
+          breaks = c(0, 0.001, 0.01, 0.05, 1),
+              labels = c("0.001", "0.01", "0.05", "Not sig")) +
+  tm_borders(alpha = 0.5) +
+  tm_view(set.zoom.limits = c(6,8)) +
+  tm_layout(
+    main.title = "local Moran's I of G",
+    main.title.size = 2)
+
+tmap_arrange(map1, map2, ncol =2)
+```
+
+```{r}
+lisa_sig <- lisa %>%
+  filter(p_ii < 0.05)
+tmap_mode("plot")
+tm_shape(lisa) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(lisa_sig) +
+  tm_fill("mean") +
+  tm_borders(alpha = 0.4)
+```
+
+
+
+## Computing local Gi\* statistics
+
+as usual, we will need to derive a spatial weight matrix before we can compute local Gi\* statistics.
+
+
+
+```{r}
+wm_idw <- hunan_GDPPC %>%
+  mutate(nb = st_contiguity(geometry),
+         wts = st_inverse_distance(nb, geometry,
+                                   scale = 1,
+                                   alpha = 1),
+         .before=1)
+```
+
+```{r}
+HCSA <- wm_idw %>%
+  mutate(local_Gi = local_gstar_perm(
+    GDPPC, nb, wt, nsim = 99),
+    .before = 1) %>%
+  unnest(local_Gi)
+
+HCSA
+```
+
+```{r}
+HCSA_sig <- HCSA %>% #hot cold spot areas
+  filter(p_sim < 0.05)
+tmap_mode("plot")
+tm_shape(HCSA) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(HCSA_sig) +
+  tm_fill("cluster") +
+  tm_borders(alpha = 0.4)
+```
+

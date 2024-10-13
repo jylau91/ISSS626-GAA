@@ -1,0 +1,661 @@
+---
+title: "Take Home Exercise 2"
+author: "Lau Jia Yi"
+date: 13 Oct 2024
+date-modified: "last-modified"
+execute:
+  eval: true
+  echo: true
+  freeze: true
+  warning: false
+---
+
+# Objectives
+
+To discover:
+
+-   if the key indicators of tourism economy of Thailand are independent from space and space and time.
+
+-   If the tourism economy is indeed spatial and spatio-temporal dependent, then, you would like to detect where are the clusters and outliers, and the emerging hot spot/cold spot areas.
+
+## The Task
+
+The specific tasks of this take-home exercise are as follows:
+
+-   Using appropriate function of **sf** and **tidyverse**, preparing the following geospatial data layer:
+
+    -   a study area layer in sf polygon features. It must be at [province level](https://en.wikipedia.org/wiki/Provinces_of_Thailand) (including Bangkok) of Thailand.
+
+    -   a tourism economy indicators layer within the study area in sf polygon features.
+
+    -   a derived tourism economy indicator layer in [**spacetime s3 class of sfdep**](https://sfdep.josiahparry.com/articles/spacetime-s3). Keep the time series at **month and year levels**.
+
+-   Using the extracted data, perform global spatial autocorrelation analysis by using [sfdep methods](https://is415-gaa-tskam.netlify.app/in-class_ex/in-class_ex05/in-class_ex05-glsa).
+
+-   Using the extracted data, perform local spatial autocorrelation analysis by using [sfdep methods](https://r4gdsa.netlify.app/chap10.html).
+
+-   Using the extracted data, perform emerging hotspot analysis by using [sfdep methods](https://is415-gaa-tskam.netlify.app/in-class_ex/in-class_ex05/in-class_ex05-ehsa).
+
+-   Describe the spatial patterns revealed by the analysis above.
+
+# Getting Started
+
+## Required Libraries
+
+```{r}
+pacman::p_load(sf, tidyverse, sfdep, tmap, spacetime, dplyr, lubridate, spdep, plotly)
+
+```
+
+## Loading the datasets
+
+```{r}
+tourism_data <- read_csv("data/rawdata/thailand_domestic_tourism_2019_2023_ver2.csv")
+```
+
+```{r}
+admin_boundaries <- st_read(dsn = "data/rawdata/",
+                            layer = "tha_admbnda_adm1_rtsd_20220121")
+```
+
+Selecting the required columns for analysis from admin boundaries and removing excess spaces in provinces to prepare dataframe for leftjoin with tourism dataset.
+
+```{r}
+admin_boundaries <- admin_boundaries %>%
+  mutate(ADM1_EN = str_trim(ADM1_EN)) %>%
+  select(Shape_Leng, Shape_Area, ADM1_EN, ADM1_PCODE, geometry)
+  
+```
+
+```{r}
+head(admin_boundaries)
+```
+
+Cleaning the tourism dataset:
+
+-   Uniform date format
+
+-   Remove excess spaces from province names
+
+-   Replacing provinces that do not match boundary admin province naming convention for the few provinces noted below:
+
+    |                     |                            |
+    |---------------------|----------------------------|
+    | **Tourism Dataset** | **Admin Boundary Dataset** |
+    | Lopburi             | Lop Buri                   |
+    | Chainat             | Chai Nat                   |
+    | Chonburi            | Chon Buri                  |
+    | Prachinburi         | Prachin Buri               |
+    | Phang Nga           | Phangnga                   |
+    | Buriram             | Buri Ram                   |
+    | Sisaket             | Si Sa Ket                  |
+    | Nong Bua Lamphu     | Nong Bua Lam Phu           |
+
+-   Selecting required variables from dataset
+
+```{r}
+tourism_data <- tourism_data %>%
+  mutate(date = as.Date(date,format = "%Y-%m-%d")) %>%
+  mutate(province_eng = str_trim(province_eng)) %>%
+  mutate(province_eng = case_when(
+    province_eng == "Lopburi" ~ "Lop Buri",
+    province_eng == "Chainat" ~ "Chai Nat",
+    province_eng == "Chonburi" ~ "Chon Buri",
+    province_eng == "Prachinburi" ~ "Prachin Buri",
+    province_eng == "Phang Nga" ~ "Phangnga",
+    province_eng == "Buriram" ~ "Buri Ram",
+    province_eng == "Sisaket" ~ "Si Sa Ket",
+    province_eng == "Nong Bua Lamphu" ~ "Nong Bua Lam Phu",
+    TRUE ~ province_eng  # Keep the rest unchanged
+  )) %>%
+  select(date, province_eng, region_eng, variable, value)
+  
+```
+
+### Fixing known errors in tourism dataset
+
+From the datasource (Kaggle), a discussion highlighted the region data for Sisaket province is incorrect as it should be east_northeast, but was labelled as south in the dataset. Upon googling/maps and review of the data table, it was verified that this is true.
+
+We will use the following code chunk to correct it.
+
+```{r}
+tourism_data[tourism_data$province_eng == "Si Sa Ket",]["region_eng"] <- "east_northeast"
+```
+
+```{r}
+head(tourism_data)
+```
+
+## Joining the datasets
+
+```{r}
+tourism_sf <- admin_boundaries %>%
+  left_join(tourism_data, by = c(ADM1_EN = "province_eng"))
+```
+
+```{r}
+head(tourism_sf)
+```
+
+We have now created the study area layer in sf at the province level of Thailand.
+
+To ease further analysis, we would label the aggregate the dates by months and years, followed by a pivot of values under each tourism indicator using the following code chunk.
+
+```{r}
+tourism_sf <- tourism_sf %>%
+  mutate(month = month(date),
+         year = year(date)) %>%
+  mutate(year_month = ym(paste(year, month, sep = "-")))
+
+tourism_wide <- tourism_sf %>%
+  pivot_wider(names_from = variable, values_from = value)
+
+head(tourism_wide)
+```
+
+# Preparing Data for Spatio Temporal Analysis
+
+## Creating Spatio-Temporal Data
+
+```{r}
+
+tourism_wide$date <- as.Date(tourism_wide$date)
+
+tourism_st <- spacetime(tourism_wide, 
+                        admin_boundaries,
+                        .loc_col = "ADM1_EN",
+                        .time_col = "year_month")
+
+```
+
+```{r}
+is_spacetime_cube(tourism_st)
+```
+
+## Creating a Spatial Weights Matrix
+
+Using queen's contiguity weights matrix using poly2nb() of spdep package.
+
+```{r}
+admin_boundaries_q <- poly2nb(admin_boundaries,
+                         queen=TRUE)
+
+```
+
+```{r}
+summary(admin_boundaries_q)
+```
+
+### Removing Phuket island for a separate spatio temporal analysis
+
+It was noted that 1 region 67 ("Phuket") has no links, upon examining the map Phuket is an isloated province with no land connection to other regions of Thailand.
+
+```{r}
+# Calculate distance to nearest neighbor for Phuket
+phuket_dist <- st_distance(admin_boundaries[admin_boundaries$ADM1_EN == "Phuket", ],
+                           admin_boundaries[-which(admin_boundaries$ADM1_EN == "Phuket"), ])
+
+# Find the minimum distance
+min_dist <- min(phuket_dist)
+
+# Adjust snap value based on distance
+new_snap <- min_dist / 2  # Adjust this factor as needed
+
+new_snap
+```
+
+```{r}
+admin_boundaries_q <- poly2nb(admin_boundaries,
+                         queen=TRUE,
+                         snap = 10000000)
+```
+
+Even with the snap value of 10,000,000 - we are not able to include Phuket as a neighbour. Thus we would analyse the island separately.
+
+### Plotting admin boundaries with and without Phuket and computing the Queen's contiguity weight matrices.
+
+```{r}
+missing_neighbors <- which(is.null(admin_boundaries_q$neigh))
+admin_boundaries_filtered <- admin_boundaries[-67, ]
+admin_boundaries_q_filtered <- poly2nb(admin_boundaries_filtered,
+                                       queen=TRUE)
+```
+
+```{r}
+longitude <- map_dbl(admin_boundaries_filtered$geometry, ~st_centroid(.x)[[1]])
+latitude <- map_dbl(admin_boundaries_filtered$geometry, ~st_centroid(.x)[[2]])
+coords <- cbind (longitude, latitude)
+```
+
+```{r}
+plot(admin_boundaries)
+plot(admin_boundaries_filtered)
+```
+
+### Plotting the Queen Contiguity based neighbour map without Phuket.
+
+```{r}
+plot(admin_boundaries_filtered$geometry, border="lightgrey")
+plot(admin_boundaries_q_filtered,coords, pch = 19, add=TRUE, col="red", cex=0.5)
+```
+
+```{r}
+rs_admin_boundaries_q_filtered <- nb2listw(admin_boundaries_q_filtered,
+                                           style = "W",
+                                           zero.policy = TRUE)
+
+rs_admin_boundaries_q_filtered
+```
+
+### Merging tourism data with admin_boundaries
+
+This CSV contains the tourism indicators summed over the entire dataset period (i.e. 50 months from Jan 2019 to Feb 2023.
+
+```{r}
+admin_tourism_indicators <- read_csv("data/clean/admin_tourism_indicators.csv")
+```
+
+Merge the above dataset with admin_boundaries dataset.
+
+```{r}
+tourism_wide_filtered_pivot <- admin_boundaries_filtered %>%
+  left_join(admin_tourism_indicators, by = c(ADM1_EN = "province_eng"))
+```
+
+## Global Measures of Spatial Autocorrelation: Moran's I
+
+### Global Moran's I test
+
+```{r eval=FALSE}
+wm_q <- tourism_wide_filtered_pivot%>%
+  mutate(nb = st_contiguity(geometry),
+         wt = st_weights(nb,
+                         style = "W"),
+         .before = 1)
+```
+
+```{r eval=FALSE}
+write_rds(wm_q, "data/clean/wm_q.rds")
+```
+
+```{r}
+wm_q <- read_rds("data/clean/wm_q.rds")
+```
+
+```{r}
+global_moran_test(wm_q$no_tourist_all,
+                  wm_q$nb,
+                  wm_q$wt)
+```
+
+```{r}
+global_moran_test(wm_q$revenue_all,
+                  wm_q$nb,
+                  wm_q$wt)
+```
+
+Null Hypothesis: There is no spatial autocorrelation in the data, the observed pattern of values is random.
+
+Alternative Hypothesis (H1): There is spatial autocorrelation in the data, the observed pattern of values is not random.
+
+Using a confidence interval of 95%, and a p-value of 0.3948 and 0.7589 for total number of tourists and total revenue per province, we have insufficient evidence to reject the null hypothesis and that the observed pattern of values is random.
+
+The I statistic of both tests is also close to zero, suggesting weak or no spatial association.
+
+### Global Moran'I permutation test
+
+```{r}
+set.seed(1234)
+```
+
+```{r}
+global_moran_perm(wm_q$no_tourist_all,
+                  wm_q$nb,
+                  wm_q$wt,
+                  nsim=99)
+```
+
+```{r}
+global_moran_perm(wm_q$revenue_all,
+                  wm_q$nb,
+                  wm_q$wt,
+                  nsim=99)
+```
+
+Performing the test using a monte-carlo simulation of Moran I did not change the results from our earlier test, we still do not have sufficient evidence to reject the null hypothesis and the observed pattern of values is random.
+
+```{r}
+lisa <- wm_q %>%
+  mutate(local_moran = local_moran(
+    no_tourist_all, nb, wt, nsim = 99),
+        .before = 1) %>%
+  unnest(local_moran)
+```
+
+```{r}
+class(lisa)
+```
+
+### Local Moran's I
+
+```{r}
+tmap_mode("plot")
+tm_shape(lisa) +
+  tm_fill("ii") +
+  tm_borders(alpha = 0.5) +
+  tm_view(set.zoom.limits = c(6,8)) +
+  tm_layout(
+    main.title = "local Moran's I of G",
+    main.title.size = 2)
+```
+
+```{r}
+tmap_mode("plot")
+map1 <- tm_shape(lisa) +
+  tm_fill("ii") + 
+  tm_borders(alpha = 0.5) +
+  tm_view(set.zoom.limits = c(6,8)) +
+  tm_layout(main.title = "local Moran's I of number of tourists",
+            main.title.size = 0.8)
+
+map2 <- tm_shape(lisa) +
+  tm_fill("p_ii",
+          breaks = c(0, 0.001, 0.01, 0.05, 0.10, 1),
+              labels = c("0.001", "0.01", "0.05", "0.10", "Not sig")) + 
+  tm_borders(alpha = 0.5) +
+  tm_layout(main.title = "p-value of local Moran's I",
+            main.title.size = 0.8)
+
+tmap_arrange(map1, map2, ncol = 2)
+```
+
+It is noted that there are provinces with a low ii value of near -1.0 with significant p_ii values in the Bangkok Metropolitan Region.
+
+```{r}
+lisa_sig <- lisa  %>%
+  filter(p_ii_sim < 0.05)
+tmap_mode("plot")
+tm_shape(lisa) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(lisa_sig) +
+  tm_fill("mean") + 
+  tm_borders(alpha = 0.4)
+```
+
+```{r}
+# Find the indices of the 10 rows with the lowest "ii" values 
+lowest_ii_indices <- order(lisa$ii)[1:10]  
+# Extract the province names and "ii" values corresponding to the lowest "ii" values 
+lowest_ii_data <- lisa[lowest_ii_indices, c("ADM1_EN", "ii", "p_ii")]  # Print the results 
+print("The 10 provinces with the lowest 'ii' values:") 
+print(lowest_ii_data)
+```
+
+Upon further examination of the dataset, it is noted that the provinces in the Bangkok Metropolitan Region, namely Bangkok and Samut Sakhon have a low ii value near -1.0. This indicates that these provinces are spatial outliers or discordant observations.
+
+Using the lisa-mean we have also noted the outlier status of these provinces due to the high-low or low-high relationship with its neighbours.
+
+## Hot Spot and Cold Spot Area Analysis
+
+### Computing local Gi\* statistics
+
+Derive a spatial weight matrix by using sfdep functions and tidyverse approach.
+
+```{r eval=FALSE}
+wm_idw <- tourism_wide_filtered_pivot %>%
+  mutate(nb = include_self(
+    st_contiguity(geometry)),
+    wts = st_inverse_distance(nb,
+                              geometry,
+                              scale = 1,
+                              alpha = 1),
+    .before = 1)
+```
+
+```{r eval=FALSE}
+write_rds(wm_idw, "data/clean/wm_idw.rds")
+```
+
+```{r}
+wm_idw <- read_rds("data/clean/wm_idw.rds")
+```
+
+Computing the local Gi\* by using the code chunk below.
+
+```{r}
+HCSA <- wm_idw %>%
+  mutate(local_Gi = local_gstar_perm(
+    no_tourist_all, nb, wts, nsim=99),
+    .before = 1) %>%
+  unnest(local_Gi)
+
+HCSA
+```
+
+### Plotting the local Gi\* at the province level.
+
+```{r}
+tmap_mode("plot")
+tm_shape(HCSA) +
+  tm_fill("gi_star") +
+  tm_borders(alpha = 0.5) +
+  tm_view(set.zoom.limits = c(6,8))
+```
+
+### Plotting the p-value of HCSA
+
+```{r}
+tmap_mode("plot")
+tm_shape(HCSA) +
+  tm_fill("p_sim") + 
+  tm_borders(alpha = 0.5)
+```
+
+```{r}
+tmap_mode("plot")
+map1 <- tm_shape(HCSA) +
+  tm_fill("gi_star") + 
+  tm_borders(alpha = 0.5) +
+  tm_view(set.zoom.limits = c(6,8)) +
+  tm_layout(main.title = "Gi* of total number of visitors",
+            main.title.size = 0.8)
+
+map2 <- tm_shape(HCSA) +
+  tm_fill("p_value",
+          breaks = c(0, 0.001, 0.01, 0.05, 0.10, 1),
+              labels = c("0.001", "0.01", "0.05", "0.10", "Not sig")) + 
+  tm_borders(alpha = 0.5) +
+  tm_layout(main.title = "p-value of Gi*",
+            main.title.size = 0.8)
+
+tmap_arrange(map1, map2, ncol = 2)
+```
+
+### Visualising hot spot and cold spot areas
+
+```{r}
+HCSA_sig <- HCSA  %>%
+  filter(p_sim < 0.05)
+tmap_mode("plot")
+tm_shape(HCSA) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(HCSA_sig) +
+  tm_fill("cluster") + 
+  tm_borders(alpha = 0.4)
+```
+
+## Emerging Hot Spot Analysis - Spatial Temporal Data
+
+Creating a spacetime cube
+
+```{r}
+
+tourism_wide$date <- as.Date(tourism_wide$date)
+
+tourism_st <- spacetime(tourism_wide, 
+                        admin_boundaries,
+                        .loc_col = "ADM1_EN",
+                        .time_col = "year_month")
+
+```
+
+```{r}
+is_spacetime_cube(tourism_st)
+```
+
+```{r}
+no_tourist_nb <- tourism_st %>%
+  activate("geometry") %>% # use the geometry attributes and ignore the rest
+  mutate(nb = include_self( #Gi* = include self, if no * dont include self.
+    st_contiguity(geometry)),
+    wt = st_inverse_distance(nb, #inverse data weight - for Gi*
+                             geometry,
+                             scale = 1,
+                             alpha = 1),
+    .before = 1) %>%
+  set_nbs("nb") %>%
+  set_wts("wt")
+```
+
+```{r}
+gi_stars <- no_tourist_nb %>%
+  group_by(year) %>%
+  mutate(gi_star = local_gstar_perm(
+    no_tourist_all, nb, wt)) %>%
+  tidyr::unnest(gi_star)
+```
+
+```{r}
+cbg <- gi_stars %>%
+  ungroup() %>%
+  filter(ADM1_EN == "Bangkok") %>%
+  select(ADM1_EN, year, gi_star)
+```
+
+Plotting the trend of Bangkok province using the Mann-Kendall test, as it was noted to be a spatial outlier in our earlier analysis.
+
+```{r}
+ggplot(data = cbg,
+       aes(x=year,
+           y= gi_star)) +
+  geom_line() +
+  theme_light()
+```
+
+It was noted that the gi_star was the highest in 2020, with a sharp decline after. The decline was likely due to covid, and the area has yet to seen an increase post covid in 2023.
+
+```{r}
+cbg %>%
+  summarise (mk = list(
+    unclass(
+      Kendall::MannKendall(gi_star)))) %>%
+  tidyr::unnest_wider(mk)
+```
+
+### Mann-Kendall test data.frame
+
+```{r eval=FALSE}
+ehsa <- gi_stars %>%
+  group_by(ADM1_EN) %>%
+  summarise(mk = list (
+    unclass(
+      Kendall::MannKendall(gi_star)))) %>%
+  tidyr::unnest_wider(mk)
+head(ehsa)
+```
+
+```{r eval=FALSE}
+write_rds(ehsa, "data/clean/ehsa.rds")
+```
+
+```{r eval=FALSE}
+ehsa <- read_rds("data/clean/ehsa.rds")
+```
+
+```{r eval=FALSE}
+set.seed(1234)
+ehsa <- emerging_hotspot_analysis(
+  x = tourism_st,
+  .var = "no_tourist_all",
+  k = 1,
+  nsim = 99
+)
+```
+
+```{r eval=FALSE}
+head(ehsa)
+```
+
+Significant emerging hot/cold spots
+
+```{r eval=FALSE}
+emerging <- ehsa %>%
+  arrange(sl, abs(tau)) %>%
+  slice(1:10)
+head(emerging)
+```
+
+### Performing Emerging Hotspot Analysis
+
+```{r eval=FALSE}
+ehsa <- emerging_hotspot_analysis(
+  x = tourism_st, 
+  .var = "no_tourist_all", 
+  k = 1, 
+  nsim = 99
+)
+```
+
+```{r eval=FALSE}
+write_rds(ehsa, "data/clean/ehsa2.rds")
+
+```
+
+```{r}
+ehsa2 <- read_rds("data/clean/ehsa2.rds")
+```
+
+```{r}
+ehsa_df <- as.data.frame(ehsa2)
+```
+
+### Visualising the distribution of EHSA classes
+
+```{r}
+ggplot(data = ehsa_df,
+       aes(x = classification)) +
+  geom_bar()
+```
+
+```{r}
+sporadic_hotspot_df <- ehsa_df %>%
+  filter(classification =="sporadic hotspot")
+
+sporadic_hotspot_df
+```
+
+Although there were 8 locations classified as sporadic hotspots, their p-values were above 0.05, hence statistically not significant.
+
+### Visualising EHSA
+
+```{r}
+tourism_ehsa <- tourism_wide_filtered_pivot %>%
+  left_join(ehsa_df,
+            by = join_by(ADM1_EN == location))
+```
+
+```{r}
+ehsa_sig <- tourism_ehsa  %>%
+  filter(p_value < 0.05)
+tmap_mode("plot")
+tm_shape(tourism_ehsa) +
+  tm_polygons() +
+  tm_borders(alpha = 0.5) +
+tm_shape(ehsa_sig) +
+  tm_fill("classification") + 
+  tm_borders(alpha = 0.4)
+```
+
+To further visualize the results, only classifications with no patterns detected were statistically significant at a confidence level of 95%.
