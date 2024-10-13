@@ -262,6 +262,8 @@ tourism_wide_filtered_pivot <- admin_boundaries_filtered %>%
   left_join(admin_tourism_indicators, by = c(ADM1_EN = "province_eng"))
 ```
 
+# Spatial Analysis
+
 ## Global Measures of Spatial Autocorrelation: Moran's I
 
 ### Global Moran's I test
