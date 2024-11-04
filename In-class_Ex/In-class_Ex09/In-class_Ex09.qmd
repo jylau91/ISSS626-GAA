@@ -1,0 +1,130 @@
+---
+title: "In-class Ex09"
+author: "Lau Jia Yi"
+date: October 28, 2024
+date-modified: "last-modified"
+execute:
+  eval: true
+  echo: true
+  warning: false
+  freeze: true
+---
+
+## Import of Data
+
+```{r}
+pacman::p_load(SpatialAcc, sf, tidyverse,
+               tmap, ggstatsplot)
+```
+
+```{r}
+mpsz <- st_read(dsn = "data/geospatial", layer = "MP14_SUBZONE_NO_SEA_PL") %>%
+  st_transform(crs = 3414)
+```
+
+```{r}
+hexagons <- st_read(dsn = "data/geospatial", layer = "hexagons") %>%
+  st_transform(crs = 3414)
+```
+
+```{r}
+eldercare <- st_read(dsn = "data/geospatial", layer = "ELDERCARE") %>%
+  st_transform(crs = 3414)
+```
+
+```{r}
+ODMatrix <- read_csv("data/aspatial/OD_Matrix.csv")
+```
+
+Note:
+
+Transform all data into crs 3414.
+
+OD Matrix, computation of entry/exit costs
+
+## Data cleaning and Updating Attributes
+
+```{r}
+eldercare <- eldercare %>%
+  select(fid, ADDRESSPOS) %>%
+  mutate(capacity = 100)
+```
+
+```{r}
+hexagons <- hexagons %>%
+  select(fid) %>%
+  mutate(demand = 100)
+```
+
+Note: demand of 100, arbitrary value of 100 is used. Actual number of variable of study should be considered when computing the demand (e.g. number of population/age demographics in a small area estimate of ratio on elder care required).
+
+```{r}
+distmat <- ODMatrix %>%
+  select(origin_id, destination_id, total_cost) %>%
+  spread(destination_id, total_cost) %>%
+  select(c(-c('origin_id')))
+```
+
+```{r}
+distmat_km <- as.matrix(distmat/1000)
+```
+
+## Computing Handsen's Accessibility
+
+```{r}
+acc_Hansen <- data.frame(ac(hexagons$demand,
+                            eldercare$capacity,
+                            distmat_km,
+                            d0 = 50,
+                            power = 2,
+                            family = "Hansen"))
+```
+
+Note: d0=50, set as 50km, as Singapore's height (North-South) distance is approximately 50km. To avoid search out of Singapore's boundary. Default family is SAM, have to set as Hansen.
+
+```{r}
+colnames(acc_Hansen) <- "accHansen"
+acc_Hansen <- as_tibble(acc_Hansen)
+hexagon_Hansen <- bind_cols(hexagons, acc_Hansen)
+```
+
+```{r}
+mapex <- st_bbox(hexagons) #to ensure extend don't change due to missing data. st_bbox = boundary box to ensure the boundary dimension is preserved.
+
+tmap_mode("plot")
+tm_shape(hexagon_Hansen,
+         bbox = mapex) + 
+  tm_fill(col = "accHansen",
+          n = 10,
+          style = "quantile",
+          border.col = "black",
+          border.lwd = 1) +
+tm_shape(eldercare) +
+  tm_symbols(size = 0.1) +
+  tm_layout(main.title = "Accessibility to eldercare: Hansen method",
+            main.title.position = "center",
+            main.title.size = 2,
+            legend.outside = FALSE,
+            legend.height = 0.45, 
+            legend.width = 3.0,
+            legend.format = list(digits = 6),
+            legend.position = c("right", "top"),
+            frame = TRUE) +
+  tm_compass(type="8star", size = 2) +
+  tm_scale_bar(width = 0.15) +
+  tm_grid(lwd = 0.1, alpha = 0.5)
+```
+
+```{r}
+hexagon_Hansen <- st_join(hexagon_Hansen, mpsz,
+                          join = st_intersects)
+```
+
+```{r}
+ggbetweenstats(
+  data = hexagon_Hansen,
+  x = REGION_N,
+  y = accHansen,
+  type ="p"
+)
+```
