@@ -154,7 +154,7 @@ kable(vif,
   kable_styling(font_size = 18)
 ```
 
-```{r}
+```{r eval=FALSE}
 plot(vif) +
   theme(axis.text.x = element_text(angle = 45))
 ```
@@ -210,7 +210,7 @@ gwRF_adaptive <- grf(formula = resale_price ~ floor_area_sqm +
                 coords=coords_train)
 ```
 
-```{r}
+```{r eval=FALSE}
 test_data_nogeom <- cbind(
   
   st_drop_geometry()
