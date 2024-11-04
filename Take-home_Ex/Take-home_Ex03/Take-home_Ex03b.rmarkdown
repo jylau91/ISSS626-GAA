@@ -1,0 +1,125 @@
+---
+title: "Take-Home_Ex03b"
+author: "Lau Jia Yi"
+date: October 28, 2024
+date-modified: "last-modified"
+execute:
+  eval: true
+  echo: true
+  warning: false
+  freeze: true
+---
+
+```{r}
+library(osmdata)
+library(sf)
+library(dplyr)
+
+# Define the area and the tag for shopping malls
+area <- "Singapore"
+tag <- "mall"
+
+# Retrieve data from OpenStreetMap for shopping malls
+mall_data <- opq(bbox = area) %>%
+  add_osm_feature(key = "shop", value = tag) %>%
+  osmdata_sf()
+
+# Extract points and polygons with names and coordinates
+mall_points <- mall_data$osm_points %>% select(name, geometry)
+mall_polygons <- mall_data$osm_polygons %>% select(name, geometry)
+
+# Combine points and polygons into a single data frame
+shopping_malls <- bind_rows(mall_points, mall_polygons) %>%
+  filter(!is.na(name)) # Filter out rows without names
+
+# Convert geometry to latitude and longitude for easier viewing
+shopping_malls <- shopping_malls %>%
+  mutate(latitude = st_coordinates(st_centroid(geometry))[,2],
+         longitude = st_coordinates(st_centroid(geometry))[,1])
+
+# View the first few rows
+head(shopping_malls)
+
+```
+
+```{r}
+# Write to CSV
+write.csv(shopping_malls %>% select(name, latitude, longitude), "shopping_malls_singapore.csv", row.names = FALSE)
+
+```
+
+```{r}
+library(osmdata)
+library(sf)
+library(dplyr)
+
+# Get Singapore's bounding box
+singapore_bbox <- getbb("Singapore")
+
+# Define the tag for shopping malls
+tag <- "mall"
+
+# Retrieve data from OpenStreetMap using the bounding box for Singapore
+mall_data <- opq(bbox = singapore_bbox) %>%
+  add_osm_feature(key = "shop", value = tag) %>%
+  osmdata_sf()
+
+# Extract point and polygon geometries (malls), calculate centroids for polygons
+mall_points <- mall_data$osm_points %>% select(name, geometry)
+mall_polygons <- mall_data$osm_polygons %>% 
+  select(name, geometry) %>%
+  mutate(geometry = st_centroid(geometry)) # Convert polygons to centroids
+
+# Combine points and polygons into one dataset
+shopping_malls <- bind_rows(mall_points, mall_polygons) %>%
+  filter(!is.na(name)) # Filter to keep only malls with names
+
+# Load a detailed boundary of Singapore to use as a spatial filter
+singapore_boundary <- opq(bbox = singapore_bbox) %>%
+  add_osm_feature(key = "admin_level", value = "2") %>%
+  osmdata_sf() %>%
+  .$osm_multipolygons %>%
+  filter(name == "Singapore")
+
+# Spatial filter: keep only malls within Singapore's boundary
+shopping_malls <- shopping_malls %>%
+  st_transform(st_crs(singapore_boundary)) %>%
+  st_intersection(singapore_boundary)
+
+# Extract latitude and longitude from geometry
+shopping_malls <- shopping_malls %>%
+  mutate(latitude = st_coordinates(geometry)[,2],
+         longitude = st_coordinates(geometry)[,1])
+
+# Display the data for confirmation
+head(shopping_malls)
+
+# Save to a CSV file
+write.csv(shopping_malls %>% select(name, latitude, longitude), 
+          "shopping_malls_singapore_centroids.csv", row.names = FALSE)
+
+
+```
+
+```{r}
+# Install packages if not already installed
+install.packages("RSelenium")
+install.packages("wdman")
+
+
+```
+
+```{r}
+# Install rJava if not already installed
+install.packages("rJava")
+library(rJava)
+
+```
+
+
+
+
+
+```         
+```
+
