@@ -1,5 +1,5 @@
 ---
-title: "Take-Home_Ex03b"
+title: "Take-Home Exercise 03 - Predictive Model on HDB Resale Prices"
 author: "Lau Jia Yi"
 date: October 28, 2024
 date-modified: "last-modified"
@@ -10,49 +10,437 @@ execute:
   freeze: true
 ---
 
+# 1 Introduction
+
+The aim of this exercise is to calibrate a predictive model to predict the HDB resale prices between July - September 2024 by using HDB resale transaction records in 2023.
+
+We will be using a list of predictors as follows:
+
+Structural Factors:
+
+-   Area of the unit
+-   Floor level
+-   Remaining lease
+-   Age of the unit
+-   Main Upgrading Program (MUP) Completed
+
+Locational factors
+
+-   Proximity to:
+    -   CBD
+    -   Eldercare centres
+    -   Foodcourt/hawker centres
+    -   MRT Stations
+    -   Park
+    -   Good Primary School (Gifted Education Programme)
+    -   Shopping mall
+    -   Supermarket
+-   Number of:
+    -   Kindergartens within 350m
+
+    -   Childcare centres within 350m
+
+    -   Bus stop within 350m
+
+    -   Primary school within 1km
+
+As I have selected the above predictors, I will be selecting five-room HDBs as the focus of this study as it will be able to accomodate multi-generation families in the most suitable/comfortable manner. This study would not consider other larger flat types such as executive and multi-generation which were included in the dataset as well.
+
+## 1.1 Preparing the Data
+
+Loading the required R packages as below.
+
 ```{r}
-library(osmdata)
-library(sf)
-library(dplyr)
+pacman::p_load(tmap, 
+               SpatialAcc, 
+               sf, 
+               reshape2,
+               tidyverse,
+               dplyr,
+               ggplot2,
+               httr,
+               jsonlite,
+               spdep,
+               GWmodel,
+               SpatialML,
+               tmap,
+               rsample,
+               Metrics)
+```
 
-# Define the area and the tag for shopping malls
-area <- "Singapore"
-tag <- "mall"
+### 1.1.1 HDB Resale Data
 
-# Retrieve data from OpenStreetMap for shopping malls
-mall_data <- opq(bbox = area) %>%
-  add_osm_feature(key = "shop", value = tag) %>%
-  osmdata_sf()
+HDB Data on resale prices is is obtained from Data.gov.sg. The resale prices are provided in a CSV format. Hence we will import it via read_csv.
 
-# Extract points and polygons with names and coordinates
-mall_points <- mall_data$osm_points %>% select(name, geometry)
-mall_polygons <- mall_data$osm_polygons %>% select(name, geometry)
+```{r}
+hdb_r <- read_csv("data/hdb/resale.csv")
+```
 
-# Combine points and polygons into a single data frame
-shopping_malls <- bind_rows(mall_points, mall_polygons) %>%
-  filter(!is.na(name)) # Filter out rows without names
+Filtering the dataset for the relevant time period (Year 2023) and flat types will be done with the following code chunk.
 
-# Convert geometry to latitude and longitude for easier viewing
-shopping_malls <- shopping_malls %>%
-  mutate(latitude = st_coordinates(st_centroid(geometry))[,2],
-         longitude = st_coordinates(st_centroid(geometry))[,1])
+```{r}
+# Convert 'month' to Date type
+hdb_r <- hdb_r %>%
+  mutate(month = as.Date(paste0(month, "-01")))  # Ensure the 'month' column is a Date type
 
-# View the first few rows
-head(shopping_malls)
+# Filter for data from 2023
+hdb_r_2023 <- hdb_r %>%
+  filter(year(month) == 2023)
+
+# Filter for 5 ROOM HDB Flats only
+
+hdb5rm_r_2023 <- hdb_r_2023 %>%
+  filter(flat_type == "5 ROOM")
 
 ```
 
-```{r}
-# Write to CSV
-write.csv(shopping_malls %>% select(name, latitude, longitude), "shopping_malls_singapore.csv", row.names = FALSE)
+A quick check on the data table prepared to only contain the data required - 5 Room HDBs and 2023 transaction data is performed with the code chunks below.
 
+```{r}
+head(hdb5rm_r_2023)
+table(hdb5rm_r_2023$flat_type)
 ```
 
 ```{r}
-library(osmdata)
-library(sf)
-library(dplyr)
+# Group data by month and count the number of units sold
+units_sold_per_month <- hdb5rm_r_2023 %>%
+  group_by(month) %>%
+  summarise(units_sold = n())
 
+# Plot the number of units sold using a bar chart with data labels
+ggplot(units_sold_per_month, aes(x = month, y = units_sold)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = units_sold), vjust = -0.5, color = "black", size = 3) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%b") +
+  labs(title = "Number of 5-Room HDB Units Sold in 2023",
+       x = "Month",
+       y = "Units Sold") +
+  theme_minimal()
+
+```
+
+We further extract the numerical value of the "storey_range" variable from the dataset to calculate the midpoint for further quantitative analysis in our subsequent worksteps.
+
+```{r}
+# Extract the numerical midpoint of 'storey_range'
+hdb5rm_r_2023 <- hdb5rm_r_2023 %>%
+  mutate(
+    storey_mid = storey_range %>%
+      gsub(" TO ", "-", .) %>%
+      purrr::map_dbl(~ mean(as.numeric(unlist(strsplit(.x, "-"))))),
+    floor_area_sqm = as.numeric(floor_area_sqm)  # Ensure floor_area_sqm is numeric
+  )
+```
+
+To calculate the age of the unit and remaining lease in years we use the following code chunk:
+
+```{r}
+# Assuming 'construction_year' is available or known
+current_year <- 2024  # Use 2024 as the base year for calculation
+hdb5rm_r_2023 <- hdb5rm_r_2023 %>%
+  mutate(
+    age_of_unit = current_year - as.numeric(lease_commence_date),
+    remaining_lease = 99 - age_of_unit  # Assuming a 99-year lease
+  )
+
+```
+
+We use the following code chunk to fetch the longitude and latitude of the HDB resale data via the address within from the OneMap API.
+
+```{r eval = FALSE}
+
+# Define the function to get coordinates from OneMap API
+get_coords <- function(add_list) {
+  # Create a data frame to store all retrieved coordinates
+  postal_coords <- data.frame()
+  
+  for (i in add_list) {
+    tryCatch({
+      r <- GET('https://www.onemap.gov.sg/api/common/elastic/search?',
+               query = list(searchVal = i,
+                            returnGeom = 'Y',
+                            getAddrDetails = 'Y'))
+      data <- fromJSON(rawToChar(r$content))
+      found <- data$found
+      res <- data$results
+      
+      # Create a new data frame for each address
+      new_row <- data.frame()
+      
+      if (found == 1) {
+        postal <- res$POSTAL
+        lat <- res$LATITUDE
+        lng <- res$LONGITUDE
+        new_row <- data.frame(address = i, 
+                              postal = postal, 
+                              latitude = lat, 
+                              longitude = lng)
+      } else if (found > 1) {
+        res_sub <- res[res$POSTAL != "NIL", ]
+        
+        if (nrow(res_sub) == 0) {
+          new_row <- data.frame(address = i, 
+                                postal = NA, 
+                                latitude = NA, 
+                                longitude = NA)
+        } else {
+          top1 <- head(res_sub, n = 1)
+          postal <- top1$POSTAL
+          lat <- top1$LATITUDE
+          lng <- top1$LONGITUDE
+          new_row <- data.frame(address = i, 
+                                postal = postal, 
+                                latitude = lat, 
+                                longitude = lng)
+        }
+      } else {
+        new_row <- data.frame(address = i, 
+                              postal = NA, 
+                              latitude = NA, 
+                              longitude = NA)
+      }
+      
+      postal_coords <- rbind(postal_coords, new_row)
+      Sys.sleep(0.1)  # Rate limiting
+      
+    }, error = function(e) {
+      message(paste("Error retrieving data for address:", i))
+      new_row <- data.frame(address = i, 
+                            postal = NA, 
+                            latitude = NA, 
+                            longitude = NA)
+      postal_coords <- rbind(postal_coords, new_row)
+    })
+  }
+  return(postal_coords)
+}
+
+# Create a unique address list for geocoding
+address_list <- unique(hdb5rm_r_2023 %>% 
+  mutate(address = paste(block, street_name, town, "Singapore")) %>% 
+  pull(address))
+
+# Get coordinates for each unique address
+coords_df <- get_coords(address_list)
+
+# Ensure coords_df has unique addresses before joining
+coords_df <- coords_df %>% 
+  distinct(address, .keep_all = TRUE)
+
+# Merge the coordinates back with the original data frame
+hdb5rm_r_2023 <- hdb5rm_r_2023 %>%
+  mutate(address = paste(block, street_name, town, "Singapore")) %>%
+  left_join(coords_df, by = "address")
+
+# Check the final number of observations
+nrow(hdb5rm_r_2023)
+```
+
+```{r}
+head(hdb5rm_r_2023)
+```
+
+Save it into rds format to reduce subsequent loading time as the OneMap API takes time to extract the location for each transaction data.
+
+```{r eval=FALSE}
+write_rds(hdb5rm_r_2023, "data/rds/hdb5rm_r_2023_loc.rds")
+```
+
+Read from the saved RDS.
+
+```{r}
+hdb5rm_r_2023_loc <- read_rds("data/rds/hdb5rm_r_2023_loc.rds")
+```
+
+Ensuring CRS is 3414
+
+```{r}
+hdb5rm_r_2023_sf <- st_as_sf(hdb5rm_r_2023_loc, coords = c("longitude", "latitude"),crs=4326)
+st_transform(hdb5rm_r_2023_sf, crs = 3414)
+st_crs(hdb5rm_r_2023_sf)
+```
+
+```{r}
+hdb5rm_r_2023_sf2 <- st_transform(hdb5rm_r_2023_sf, crs = 3414)
+```
+
+```{r}
+st_crs(hdb5rm_r_2023_sf2)
+```
+
+### 1.1.2 Preparing the other locational factors (Proximity)
+
+#### 1.1.2.1 Proximity to CBD
+
+We will calculate the distance from each HDB to the CBD, point coordinate approximated as 1.283423, 103.851959.
+
+The results are then added back as "**dist_to_cbd**" in the hdb sf data frame.
+
+```{r}
+# Add the coordinates for the CBD
+cbd_coords <- data.frame(
+  name = "CBD",
+  longitude = 103.851959,  # Approximate longitude of Singapore's CBD
+  latitude = 1.283423      # Approximate latitude of Singapore's CBD
+)
+
+# Convert CBD to an sf object
+cbd_sf <- st_as_sf(cbd_coords, coords = c("longitude", "latitude"), crs = 4326)
+cbd_sf2 <- st_transform(cbd_sf, crs = 3414)
+
+# Calculate distance from HDB locations to the CBD
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(
+    dist_to_cbd = st_distance(geometry, cbd_sf2) %>% as.numeric() / 1000  # Convert to kilometers
+  )
+```
+
+#### 1.1.2.2 Proximity to Eldercare services
+
+Load the location dataset of eldercare services downloaded from data.gov.sg. Ensure it is in CRS 3414 to calculate proximity / distance in metres / KM.
+
+```{r}
+# Read the eldercare GeoJSON file
+eldercare_sf <- st_read("data/eldercare/EldercareServices.geojson", crs = 4326)
+eldercare_sf2 <- st_transform(eldercare_sf, crs = 3414)
+```
+
+```{r}
+st_crs(eldercare_sf2)
+```
+
+Calculating the minimum distance using st_distance against the list of eldercare services followed by a minimum function.
+
+```{r}
+# Calculate distances from each HDB point to the nearest eldercare center
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_eldercare = st_distance(geometry, eldercare_sf2) %>% apply(1, min))
+
+# Convert distances from meters to kilometers
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_eldercare = as.numeric(dist_to_eldercare) / 1000)
+```
+
+Plot the coordinates to ensure that the HDB and services are plotted on the same coordinate system.
+
+```{r}
+library(tmap)
+tmap_mode("plot")
+tm_shape(hdb5rm_r_2023_sf2) + tm_dots(col = "blue") +
+  tm_shape(eldercare_sf2) + tm_dots(col = "red")
+```
+
+#### 1.1.2.3 Proximity to a Hawker centre
+
+We now repeat the steps from 1.1.2.2 to 1.1.2.8 for the respective services.
+
+```{r eval = FALSE}
+# Read the hawker centres GeoJSON file
+hawker_centres_sf <- st_read("data/hawker_food/HawkerCentresGEOJSON.geojson", crs = 4326)
+hawker_centres_sf2 <- st_transform(hawker_centres_sf, crs = 3414)
+
+# Check the CRS to confirm it's transformed correctly
+st_crs(hawker_centres_sf2)
+
+# Calculate distances from each HDB point to the nearest hawker centre
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_hawker = st_distance(geometry, hawker_centres_sf2) %>% apply(1, min))
+
+# Convert distances from meters to kilometers
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_hawker = as.numeric(dist_to_hawker) / 1000)
+
+# Visualize the HDB locations and hawker centres for verification
+library(tmap)
+tmap_mode("plot")
+tm_shape(hdb5rm_r_2023_sf2) + tm_dots(col = "blue") +
+  tm_shape(hawker_centres_sf2) + tm_dots(col = "green")
+
+```
+
+#### 1.1.2.4 Proximity to a MRT Station
+
+```{r eval = FALSE}
+# Read the MRT stations GeoJSON file
+mrt_stations_sf <- st_read("data/mrt/LTAMRTStationExitGEOJSON.geojson", crs = 4326)
+mrt_stations_sf2 <- st_transform(mrt_stations_sf, crs = 3414)
+
+# Check the CRS to confirm it's transformed correctly
+st_crs(mrt_stations_sf2)
+
+# Calculate distances from each HDB point to the nearest MRT station
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_mrt = st_distance(geometry, mrt_stations_sf2) %>% apply(1, min))
+
+# Convert distances from meters to kilometers
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_mrt = as.numeric(dist_to_mrt) / 1000)
+
+# Visualize the HDB locations and MRT stations for verification
+library(tmap)
+tmap_mode("plot")
+tm_shape(hdb5rm_r_2023_sf2) + tm_dots(col = "blue") +
+  tm_shape(mrt_stations_sf2) + tm_dots(col = "orange")
+
+```
+
+#### 1.1.2.5 Proximity to a Park
+
+```{r eval = FALSE}
+# Read the parks GeoJSON file
+parks_sf <- st_read("data/park/ParkFacilitiesGEOJSON.geojson", crs = 4326)
+parks_sf2 <- st_transform(parks_sf, crs = 3414)
+
+# Check the CRS to confirm it's transformed correctly
+st_crs(parks_sf2)
+
+# Calculate distances from each HDB point to the nearest park
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_park = st_distance(geometry, parks_sf2) %>% apply(1, min))
+
+# Convert distances from meters to kilometers
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_park = as.numeric(dist_to_park) / 1000)
+
+# Visualize the HDB locations and parks for verification
+library(tmap)
+tmap_mode("plot")
+tm_shape(hdb5rm_r_2023_sf2) + tm_dots(col = "blue") +
+  tm_shape(parks_sf2) + tm_dots(col = "green")
+
+```
+
+#### 1.1.2.6 Proximity to a Supermarket
+
+```{r eval = FALSE}
+# Read the supermarkets GeoJSON file
+supermarkets_sf <- st_read("data/supermarket/SupermarketsGEOJSON.geojson", crs = 4326)
+supermarkets_sf2 <- st_transform(supermarkets_sf, crs = 3414)
+
+# Check the CRS to confirm it's transformed correctly
+st_crs(supermarkets_sf2)
+
+# Calculate distances from each HDB point to the nearest supermarket
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_supermarket = st_distance(geometry, supermarkets_sf2) %>% apply(1, min))
+
+# Convert distances from meters to kilometers
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_supermarket = as.numeric(dist_to_supermarket) / 1000)
+
+# Visualize the HDB locations and supermarkets for verification
+library(tmap)
+tmap_mode("plot")
+tm_shape(hdb5rm_r_2023_sf2) + tm_dots(col = "blue") +
+  tm_shape(supermarkets_sf2) + tm_dots(col = "orange")
+
+```
+
+#### 1.1.2.7 Proximity to a Shopping Mall
+
+To obtain the list of Shopping Malls we will scrape OpenStreetMap
+
+```{r eval = FALSE}
 # Get Singapore's bounding box
 singapore_bbox <- getbb("Singapore")
 
@@ -65,13 +453,13 @@ mall_data <- opq(bbox = singapore_bbox) %>%
   osmdata_sf()
 
 # Extract point and polygon geometries (malls), calculate centroids for polygons
-mall_points <- mall_data$osm_points %>% select(name, geometry)
+mall_points <- mall_data$osm_points %>% select(osm_id, name, geometry)
 mall_polygons <- mall_data$osm_polygons %>% 
-  select(name, geometry) %>%
+  select(osm_id, name, geometry) %>%
   mutate(geometry = st_centroid(geometry)) # Convert polygons to centroids
 
 # Combine points and polygons into one dataset
-shopping_malls <- bind_rows(mall_points, mall_polygons) %>%
+shop_mall <- bind_rows(mall_points, mall_polygons) %>%
   filter(!is.na(name)) # Filter to keep only malls with names
 
 # Load a detailed boundary of Singapore to use as a spatial filter
@@ -82,39 +470,718 @@ singapore_boundary <- opq(bbox = singapore_bbox) %>%
   filter(name == "Singapore")
 
 # Spatial filter: keep only malls within Singapore's boundary
-shopping_malls <- shopping_malls %>%
+shop_mall <- shop_mall %>%
   st_transform(st_crs(singapore_boundary)) %>%
   st_intersection(singapore_boundary)
 
 # Extract latitude and longitude from geometry
-shopping_malls <- shopping_malls %>%
+shop_mall <- shop_mall %>%
   mutate(latitude = st_coordinates(geometry)[,2],
          longitude = st_coordinates(geometry)[,1])
 
+# Keep only the specified columns
+shop_mall <- shop_mall %>% select(name, osm_id, longitude, latitude, geometry)
+
 # Display the data for confirmation
-head(shopping_malls)
+head(shop_mall)
 
 # Save to a CSV file
-write.csv(shopping_malls %>% select(name, latitude, longitude), 
-          "shopping_malls_singapore_centroids.csv", row.names = FALSE)
+write.csv(shop_mall %>% select(name, osm_id, longitude, latitude), 
+          "data/shop_mall/shop_mall_centroids.csv", row.names = FALSE)
+```
 
+Transform the scrapped data into CRS 3414.
 
+```{r eval = FALSE}
+shop_mall <- st_transform(shop_mall, crs = 3414)
+```
+
+Perform the same st_distance calculation against our HDB dataset.
+
+```{r eval = FALSE}
+# Ensure that shop_mall is in the correct CRS (3414)
+shop_mall_sf <- st_transform(shop_mall, crs = 3414)
+
+# Check the CRS to confirm it's transformed correctly
+st_crs(shop_mall_sf)
+
+# Calculate distances from each HDB point to the nearest shopping mall
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_mall = st_distance(geometry, shop_mall_sf) %>% apply(1, min))
+
+# Convert distances from meters to kilometers
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_mall = as.numeric(dist_to_mall) / 1000)
+
+# Visualize the HDB locations and shopping malls for verification
+library(tmap)
+tmap_mode("plot")
+tm_shape(hdb5rm_r_2023_sf2) + tm_dots(col = "blue") +
+  tm_shape(shop_mall_sf) + tm_dots(col = "orange")
+
+```
+
+#### 1.1.2.8 Proximity to a Good Primary School
+
+Next, we will take primary schools that offers the Gifted Education Program as a proxy or identifier of a good primary school. There are other subjective methods such as calculating the number of applications over student cohort that could be considered.
+
+::: {callout-tip}
+## Myth or not: Every School is a Good School?
+
+Although every school is a good school as a former Minister of Education had previously stated, but our current PM Lawrence Wong added on "but not everyone is convinced." We have also learnt other wise from Data Analytics Labs. Afterall a good school or right school might be more than academic results as jobs evolves from specific domain knowledge.
+:::
+
+Listed on MOE's website are these 9 primary schools, I have extracted the address from the website manually and saved them into a CSV file.
+
+|                                        |                                      |
+|----------------------------------------|--------------------------------------|
+| School                                 | Address                              |
+| Anglo-Chinese School (Primary)         | 50 Barker Road, S309918              |
+| Catholic High School (Primary Section) | 9 Bishan Street 22, S579767          |
+| Henry Park Primary School              | 1 Holland Grove Road, S278790        |
+| Nan Hua Primary School                 | 30 Jalan Lempeng, S128806            |
+| Nanyang Primary School                 | 52 King's Road, S268097              |
+| Raffles Girls' Primary School          | 21 Hillcrest Road, S289072           |
+| Rosyth School                          | 21 Serangoon North Avenue 4, S555855 |
+| St. Hilda's Primary School             | 2 Tampines Ave 3, S529706            |
+| Tao Nan School                         | 49 Marine Crescent, S449761          |
+
+```{r eval = FALSE}
+gpsch <- read_csv("data/gpschool/g_pri_sch.csv")
+```
+
+We will re-use the earlier function "get_coords" in section 1.1.1.
+
+```{r eval = FALSE}
+# Create a unique address list for geocoding
+gpsch_address_list <- unique(gpsch %>% 
+  pull(address))
+
+# Get coordinates for each unique address
+coords_df <- get_coords(gpsch_address_list)
+
+# Ensure coords_df has unique addresses before joining
+coords_df <- coords_df %>% 
+  distinct(address, .keep_all = TRUE)
+
+# Merge the coordinates back with the original data frame
+gpsch <- gpsch %>%
+  left_join(coords_df, by = "address")
+
+gpsch_sf <- st_as_sf(gpsch, coords = c("longitude", "latitude"),crs=4326)
+gpsch_sf2 <- st_transform(gpsch_sf, crs = 3414)
+st_crs(gpsch_sf2)
+```
+
+Followed by a calculation using st_distance again.
+
+```{r eval = FALSE}
+# Calculate distances from each HDB point to the nearest good primary school
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_gpsch = st_distance(geometry, gpsch_sf2) %>% apply(1, min))
+
+# Convert distances from meters to kilometers
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(dist_to_gpsch = as.numeric(dist_to_gpsch) / 1000)
+
+# Visualize the HDB locations and shopping malls for verification
+library(tmap)
+tmap_mode("plot")
+tm_shape(hdb5rm_r_2023_sf2) + tm_dots(col = "blue") +
+  tm_shape(gpsch_sf2) + tm_dots(col = "red")
+```
+
+### 1.1.3 Preparing the other locational factors (Number of services)
+
+#### 1.1.3.1 Number of Kindergartens within 350m
+
+First we load the kindergartens location data from data.gov.sg, and transform it into CRS 3414.
+
+We then use the following codes to count the number of kindergartens within 350m.
+
+-   st_buffer: 350m buffer around each HDB location.
+-   st_within: checking if the point data in kindergartens_sf fall within the st_buffer created.
+-   sapply: iterates over each row data in hdb5m_r_2023_sf2 data table to count how many kindergartens fall within the buffer.
+
+```{r  eval=FALSE}
+# Load the kindergarten data
+kindergartens_sf <- st_read("data/kindergartens/kindergartens.geojson")
+
+# Ensure the kindergarten data is in the correct CRS (EPSG 3414)
+kindergartens_sf <- st_transform(kindergartens_sf, crs = 3414)
+
+# Create a buffer of 350m around each HDB location
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(kindergarten_count = sapply(st_geometry(.), function(hdb_point) {
+    sum(st_within(kindergartens_sf, st_buffer(hdb_point, 350), sparse = FALSE))
+  }))
+
+# View the updated HDB data with kindergarten count
+head(hdb5rm_r_2023_sf2)
+```
+
+We will then repeat this for sections 1.1.3.2 to 1.1.3.4 for the count of other services.
+
+#### 1.1.3.2 Number of Childcare centres within 350m
+
+```{r  eval=FALSE}
+# Load the childcare centers data
+childcare_sf <- st_read("data/childcare/ChildCareServices.geojson")
+
+# Ensure the childcare data is in the correct CRS (EPSG 3414)
+childcare_sf <- st_transform(childcare_sf, crs = 3414)
+
+# Create a buffer of 350m around each HDB location and count childcare centers within that buffer
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(childcare_count = sapply(st_geometry(.), function(hdb_point) {
+    sum(st_within(childcare_sf, st_buffer(hdb_point, 350), sparse = FALSE))
+  }))
+
+# View the updated HDB data with childcare count
+head(hdb5rm_r_2023_sf2)
+
+```
+
+#### 1.1.3.3 Number of Bus Stop within 350m
+
+```{r  eval=FALSE}
+# Load the bus stop data and transform to CRS 3414
+bus_stop <- st_read(dsn = "data/bus_stop", layer = "BusStop") %>%
+  st_transform(crs = 3414)
+
+# Create a buffer of 350m around each HDB location and count bus stops within that buffer
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(bus_stop_count = sapply(st_geometry(.), function(hdb_point) {
+    sum(st_within(bus_stop, st_buffer(hdb_point, 350), sparse = FALSE))
+  }))
+
+# View the updated HDB data with bus stop count
+head(hdb5rm_r_2023_sf2)
+```
+
+#### 1.1.3.4 Number of Primary school within 1km
+
+First, we obtain the General Information of Schools from data.gov.sg "School Directory and Information" and load the CSV.
+
+```{r eval=FALSE}
+psch <- read_csv("data/pschool/GIOS.csv")
+
+psch <- psch %>%
+  select(school_name, address, mainlevel_code) %>%
+  filter(mainlevel_code == "PRIMARY")
+
+# Create a unique address list for geocoding
+psch_address_list <- unique(psch %>% pull(address))
+
+# Get coordinates for each unique address using the provided get_coords function
+coords_df <- get_coords(psch_address_list)
+
+# Ensure coords_df has unique addresses before joining
+coords_df <- coords_df %>%
+  distinct(address, .keep_all = TRUE)
+
+# Merge the coordinates back with the original data frame
+psch <- psch %>%
+  left_join(coords_df, by = "address")
+
+# Convert to sf object and transform to CRS 3414
+psch_sf <- st_as_sf(psch, coords = c("longitude", "latitude"), crs = 4326)
+psch_sf2 <- st_transform(psch_sf, crs = 3414)
+
+# Display CRS to confirm the transformation
+st_crs(psch_sf2)
+```
+
+We then count the number of primary schools using psch_sf2 and the HDB buffer point as per the steps performed from 1.1.3.1 again.
+
+```{r  eval=FALSE}
+
+# Create a buffer of 350m around each HDB location and count bus stops within that buffer
+hdb5rm_r_2023_sf2 <- hdb5rm_r_2023_sf2 %>%
+  mutate(psch_count = sapply(st_geometry(.), function(hdb_point) {
+    sum(st_within(psch_sf2, st_buffer(hdb_point, 350), sparse = FALSE))
+  }))
+
+# View the updated HDB data with bus stop count
+head(hdb5rm_r_2023_sf2)
+```
+
+After all the calculations for section 1.1.2 and 1.1.3 is done, we will write the HDB sf file into rds to save subsequent rendering and loading times.
+
+```{r eval=FALSE}
+write_rds(hdb5rm_r_2023_sf2, "data/rds/hdb5rm_r_2023_sf2.rds")
+```
+
+Read from the saved RDS.
+
+```{r}
+hdb5rm_r_2023_sf2 <- read_rds("data/rds/hdb5rm_r_2023_sf2.rds")
+```
+
+# 2 Building the predictive model
+
+## 2.1 Data Sampling
+
+The entire data set is split into training and test datasets using 65% and 35% respectively using initial_split() the rsample package.
+
+```{r eval = FALSE}
+set.seed(8888)
+resale_split <- initial_split(hdb5rm_r_2023_sf2,
+                              prop = 6.5/10,)
+train_data <- training(resale_split)
+test_data <- testing(resale_split)
+```
+
+```{r eval = FALSE}
+write_rds(train_data, "data/model/train_data.rds")
+write_rds(test_data, "data/model/test_data.rds")
 ```
 
 ```{r}
-# Install packages if not already installed
-install.packages("RSelenium")
-install.packages("wdman")
+train_data <- read_rds("data/model/train_data.rds")
+test_data <- read_rds("data/model/test_data.rds")
+```
 
+## 2.2 Computing Correlation Matrix
 
+Before loading the predictors into the predictive model, we will examine the dataset for any sign of multi-collinerarity.
+
+```{r}
+hdb5rm_r_2023_sf2_nogeo <- hdb5rm_r_2023_sf2 %>%
+  st_drop_geometry() %>%
+  select_if(is.numeric)
+
+corrplot::corrplot(cor(hdb5rm_r_2023_sf2_nogeo), 
+                   diag = FALSE, 
+                   order = "AOE",
+                   tl.pos = "td", 
+                   tl.cex = 0.8, 
+                   method = "number", 
+                   type = "upper")
+```
+
+::: callout-note
+The perfect correlation of 1.0/-1.0 is noted between lease_commence_date and age_of_unit / remaining_lease as the three variables are just the differences of each other. We will leave it in the dataset for flexibility in further analysis and interpretation.
+:::
+
+## 2.3 Non-spatial multiple linear regression
+
+We will first perform a non-spatial multiple linear regression of the structural and location factors mentioned in Section 1.0.
+
+```{r}
+price_mlr <- lm(resale_price ~ 
+                  floor_area_sqm + 
+                  storey_mid + 
+                  remaining_lease +
+                  age_of_unit +
+                  dist_to_cbd +
+                  dist_to_eldercare +
+                  dist_to_hawker +
+                  dist_to_mrt +
+                  dist_to_park +
+                  dist_to_gpsch +
+                  dist_to_mall +
+                  dist_to_supermarket,
+                data=train_data)
+summary(price_mlr)
+```
+
+::: {.callout-tip title="Model Summary"}
+-   **Multiple R-squared: 0.6911**: This means that about **69.11%** of the variance in resale prices is explained by the predictors in the model. This is a good fit, but there's still a fair amount of unexplained variance.
+
+-   **Adjusted R-squared: 0.6902**: This value adjusts for the number of predictors in the model and confirms that the model fit is still quite good after accounting for the number of predictors.
+
+-   **F-statistic: 769.9** with a **p-value \< 2.2e-16**: This tests the overall significance of the regression model. Since the p-value is very small, the model is statistically significant and has a high explanatory power.
+
+Strong predictors of resale price include floor_area_sqm, storey_mid, remaining_lease, dist_to_cbd, dist_to_eldercare, dist_to_hawker, dist_to_park, dist_to_gpsch, dist_to_mall, and dist_to_supermarket.
+
+Weaker predictors such as proximity to MRT stations will be removed in subsequent models as it is statistically not significant.
+:::
+
+```{r}
+price_mlr <- lm(resale_price ~ 
+                  floor_area_sqm + 
+                  storey_mid + 
+                  remaining_lease +
+                  age_of_unit +
+                  dist_to_cbd +
+                  dist_to_eldercare +
+                  dist_to_hawker +
+                  dist_to_park +
+                  dist_to_gpsch +
+                  dist_to_mall +
+                  dist_to_supermarket,
+                data=train_data)
+summary(price_mlr)
+```
+
+## 2.4 gwr predictive method
+
+We will next calibrate a model to predict HDB resale price by using geographically weighted regression method of GWmodel package.
+
+### 2.4.1 Converting train sf data frame to SpatialPointDataFrame
+
+```{r}
+train_data_sp <- as_Spatial(train_data)
+train_data_sp
+```
+
+### 2.4.2 Computing adaptive bandwith for train data
+
+Determine the optimal bandwith to be used via bw.gwr() of GWmodel package.
+
+```{r eval=FALSE}
+bw_adaptive <- bw.gwr(resale_price ~
+                        floor_area_sqm + 
+                        storey_mid + 
+                        remaining_lease +
+                        age_of_unit +
+                        dist_to_cbd +
+                        dist_to_eldercare +
+                        dist_to_hawker +
+                        dist_to_park +
+                        dist_to_gpsch +
+                        dist_to_mall +
+                        dist_to_supermarket,
+                        data=train_data_sp,
+                        approach="CV",
+                        kernel="gaussian",
+                        adaptive=TRUE,
+                        longlat=FALSE)
+```
+
+The result shows that 3065 neighbour points will be the optimal bandwidth to be used if adaptive bandwidth is used for this data set.
+
+We will write and read bw_adaptive to avoid the long calculation time for the adaptive bandwith.
+
+```{r eval = FALSE}
+write_rds(bw_adaptive, "data/model/bw_adaptive.rds")
 ```
 
 ```{r}
-# Install rJava if not already installed
-install.packages("rJava")
-library(rJava)
-
+bw_adaptive <- read_rds("data/model/bw_adaptive.rds")
 ```
 
-```         
+### 2.4.3 Constructing the adaptive bandwith gwr model for train data
+
+To calibrate the gwr-based hedonic pricing model by using adaptive bandwith and the Gaussian kernel using the code chunk below.
+
+```{r eval=FALSE}
+gwr_adaptive <- gwr.basic(formula = resale_price ~
+                            floor_area_sqm + 
+                            storey_mid + 
+                            remaining_lease +
+                            age_of_unit +
+                            dist_to_cbd +
+                            dist_to_eldercare +
+                            dist_to_hawker +
+                            dist_to_park +
+                            dist_to_gpsch +
+                            dist_to_mall +
+                            dist_to_supermarket,
+                          data=train_data_sp,
+                          bw=bw_adaptive, 
+                          kernel = 'gaussian', 
+                          adaptive=TRUE,
+                          longlat = FALSE)
+```
+
+We will write and read gwr_adaptive to store and avoid loading time.
+
+```{r eval = FALSE}
+write_rds(gwr_adaptive, "data/model/gwr_adaptive.rds")
+```
+
+```{r}
+gwr_adaptive <- read_rds("data/model/gwr_adaptive.rds")
+gwr_adaptive
+```
+
+::: {.callout-tip title="gwr_adaptive summary"}
+**Global Linear Regression**
+
+Adjusted R Square of 0.6902 indicates that the model is a good fit overall.
+
+p-value of \<2.2e-16 indicates that the model is statistically significant.
+
+**Geographically Weighted Regression**
+
+R-square value of -13.20393 may indicate over/under fitting leading to poor predictive performance in a localised analysis.
+:::
+
+### 2.4.4 Converting test sf data frame to SpatialPointDataFrame
+
+```{r}
+test_data_sp <- as_Spatial(test_data) 
+train_data_sp
+```
+
+### 2.4.5 Computing adaptive bandwith for test data
+
+Determine the optimal bandwith to be used via bw.gwr() of GWmodel package.
+
+```{r eval=FALSE}
+bw_adaptive_test <- bw.gwr(resale_price ~
+                        floor_area_sqm + 
+                        storey_mid + 
+                        remaining_lease +
+                        age_of_unit +
+                        dist_to_cbd +
+                        dist_to_eldercare +
+                        dist_to_hawker +
+                        dist_to_park +
+                        dist_to_gpsch +
+                        dist_to_mall +
+                        dist_to_supermarket,
+                        data=test_data_sp,
+                        approach="CV",
+                        kernel="gaussian",
+                        adaptive=TRUE,
+                        longlat=FALSE)
+```
+
+The result shows that 1227 neighbour points will be the optimal bandwidth to be used if adaptive bandwidth is used for the test data set.
+
+We will write and read bw_adaptive to avoid the long calculation time for the adaptive bandwith.
+
+```{r eval = FALSE}
+write_rds(bw_adaptive_test, "data/model/bw_adaptive_test.rds")
+```
+
+```{r}
+bw_adaptive_test <- read_rds("data/model/bw_adaptive_test.rds")
+```
+
+### 2.4.3 Constructing the adaptive bandwith gwr model for train data
+
+To calibrate the gwr-based hedonic pricing model by using adaptive bandwith and the Gaussian kernel using the code chunk below.
+
+```{r}
+gwr_adaptive_test <- gwr.basic(formula = resale_price ~
+                            floor_area_sqm + 
+                            storey_mid + 
+                            remaining_lease +
+                            age_of_unit +
+                            dist_to_cbd +
+                            dist_to_eldercare +
+                            dist_to_hawker +
+                            dist_to_park +
+                            dist_to_gpsch +
+                            dist_to_mall +
+                            dist_to_supermarket,
+                          data=test_data_sp,
+                          bw=bw_adaptive, 
+                          kernel = 'gaussian', 
+                          adaptive=TRUE,
+                          longlat = FALSE)
+```
+
+We will write and read gwr_adaptive to store and avoid loading time.
+
+```{r eval = FALSE}
+write_rds(gwr_adaptive_test, "data/model/gwr_adaptive_test.rds")
+```
+
+```{r}
+gwr_adaptive_test <- read_rds("data/model/gwr_adaptive.rds") 
+gwr_adaptive_test
+```
+
+::: {.callout-tip title="gwr_adaptive summary"}
+**Global Linear Regression**
+
+Adjusted R Square of 0.6902 indicates that the model is a good fit overall.
+
+p-value of \<2.2e-16 indicates that the model is statistically significant.
+
+**Geographically Weighted Regression**
+
+R-square value of -13.26094 may indicate over/under fitting leading to poor predictive performance in a localised analysis.
+:::
+
+## 2.5 Preparing coordinates data
+
+### 2.5.1 Extracting coordinates data
+
+The code chunk below will extract the x,y coordinates of the full, training and test data sets.
+
+```{r}
+coords <- st_coordinates(hdb5rm_r_2023_sf2)
+coords_train <- st_coordinates(train_data)
+coords_test <- st_coordinates(test_data)
+```
+
+Write and read into rds for future use.
+
+```{r eval=FALSE}
+write_rds(coords, "data/model/coords.rds" )
+write_rds(coords_train, "data/model/coords_train.rds" )
+write_rds(coords_test, "data/model/coords_test.rds" )
+```
+
+```{r}
+coords <- read_rds("data/model/coords.rds" )
+coords_train <- read_rds("data/model/coords_train.rds" )
+coords_test <- read_rds("data/model/coords_test.rds" )
+```
+
+### 2.5.1 Dropping geometry field
+
+```{r}
+train_data_nogeo <- train_data %>%
+  st_drop_geometry()
+```
+
+## 2.6 Calibrating Random Forest Model
+
+Calibrate a model to predict HDB resale price by using random forest function of ranger package.,
+
+```{r eval=FALSE}
+set.seed(8888)
+rf <- ranger(resale_price ~
+               floor_area_sqm + 
+               storey_mid + 
+               remaining_lease +
+               age_of_unit +
+               dist_to_cbd +
+               dist_to_eldercare +
+               dist_to_hawker +
+               dist_to_park +
+               dist_to_gpsch +
+               dist_to_mall +
+               dist_to_supermarket,
+             data=train_data_nogeo)
+rf
+```
+
+::: {.callout-tip title="Random Forest result summary"}
+**R Square of 0.896** indicates that the model has a good predictive performance and explains a substantial proportion of variance in the resale price.
+:::
+
+Save the random forest output into rds for future use.
+
+```{r eval=FALSE}
+write_rds(rf, "data/model/rf.rds")
+```
+
+```{r}
+rf <- read_rds("data/model/rf.rds")
+```
+
+## 2.7 Calibrating Geographical Random Forest
+
+We will use grf() of the SpatialML package to calibrate a model to predict HDB resale price.
+
+### 2.7.1 Calibrating using training data
+
+Calibrate a geographic random forest model by using the below code chunk.
+
+::: callout-note
+We will use a bandwith of 55(km) as that represents the height of Singapore, i.e. width is less than 55. Representing the maximum spatial information of nearby data points is within a distance of 55km.
+
+Number of trees is set at 50, to reduce the overall model training time.
+:::
+
+```{r eval=FALSE}
+set.seed(8888)
+gwRF_adaptive <- grf(formula = resale_price ~
+                       floor_area_sqm + 
+                       storey_mid + 
+                       remaining_lease +
+                       age_of_unit +
+                       dist_to_cbd +
+                       dist_to_eldercare +
+                       dist_to_hawker +
+                       dist_to_park +
+                       dist_to_gpsch +
+                       dist_to_mall +
+                       dist_to_supermarket,
+                     dframe=train_data_nogeo,
+                     bw=55,
+                     kernel="adaptive",
+                     coords=coords_train,
+                     ntree = 50)
+```
+
+Write and read RDS for future use.
+
+```{r eval=FALSE}
+write_rds(gwRF_adaptive, "data/model/gwRF_adaptive.rds")
+```
+
+```{r eval=FALSE}
+gwRF_adaptive <- read_rds("data/model/gwRF_adaptive.rds")
+```
+
+### 2.7.2 Predicting by using test data
+
+We will then use predict.grf() of SpatialML package to predict the resale value by using the test data and gwRF_adaptive model calibrated earlier.
+
+::: callout-warning
+To Prof. Kam:
+
+As the assignment specifies to predict the prices from July 2024 to September 2024, the testing data used here should be the HDB resale data for this period while the training data would consist of all the transactions from January 2023 to December 2023. An error has been made earlier from the data preparation to the data split. Due to time constraint I am not able to correct the training / test dataset used. I will correct this in an uncoming revision to this page.
+
+I will continue on the same dataset for this exercise but it would be using the data sampling method performed in section 2.1.
+:::
+
+```{r eval=FALSE}
+test_data_nogeo <- cbind(test_data, coords_test) %>%
+  st_drop_geometry()
+```
+
+```{r eval=FALSE}
+gwRF_pred <- predict.grf(gwRF_adaptive,
+                         test_data_nogeo,
+                         x.var.name="X",
+                         y.var.name="Y",
+                         local.w=1,
+                         global.w=0)
+```
+
+Before moving on, we will save the output of the prediction model into rds for future use.
+
+```{r eval=FALSE}
+write_rds(gwRF_pred, "data/model/gwRF_pred.rds")
+```
+
+```{r eval=FALSE}
+gwRF_pred <- read_rds("data/model/gwRF_pred.rds")
+gwRF_pred_df <- as.data.frame(gwRF_pred)
+```
+
+In the code chunk below, cbind() is used to append the predicted values onto test_data_nogeo.
+
+```{r eval=FALSE}
+test_data_p <- cbind(test_data_nogeo, gwRF_pred_df)
+```
+
+Write and read test_data_p for future use.
+
+```{r eval=FALSE}
+write_rds(test_data_p, "data/model/test_data_p.rds")
+```
+
+```{r eval=FALSE}
+test_data_p <- read_rds("data/model/test_data_p.rds")
+```
+
+### 2.7.3 Calculating the Root Mean Square Error (RMSE)
+
+RMSE measures how far predicted values are from observed values in a regression analysis. In the code chunk below, rmse() of Metrics package is used to compute the RMSE.
+
+```{r eval=FALSE}
+rmse(test_data_p$resale_price,
+     test_data_p$gwRF_pred)
+```
+
+### 2.7.4 Visualising the predicted values
+
+A scatterplot can be used to visualise the actual resale price and the predicted resale price by using the code chunk below.
+
+```{r eval=FALSE}
+ggplot(data=test_data_p,
+       aes(x = GRF_pred,
+           y = resale_price)) +
+  geom_point()
 ```
