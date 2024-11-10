@@ -1216,5 +1216,54 @@
     "title": "Take-Home Exercise 03 - Predictive Model on HDB Resale Prices",
     "section": "2.7 Calibrating Geographical Random Forest",
     "text": "2.7 Calibrating Geographical Random Forest\nWe will use grf() of the SpatialML package to calibrate a model to predict HDB resale price.\n\n2.7.1 Calibrating using training data\nCalibrate a geographic random forest model by using the below code chunk.\n\n\n\n\n\n\nNote\n\n\n\nWe will use a bandwith of 55(km) as that represents the height of Singapore, i.e. width is less than 55. Representing the maximum spatial information of nearby data points is within a distance of 55km.\nNumber of trees is set at 50, to reduce the overall model training time.\n\n\n\nset.seed(8888)\ngwRF_adaptive &lt;- grf(formula = resale_price ~\n                       floor_area_sqm + \n                       storey_mid + \n                       remaining_lease +\n                       age_of_unit +\n                       dist_to_cbd +\n                       dist_to_eldercare +\n                       dist_to_hawker +\n                       dist_to_park +\n                       dist_to_gpsch +\n                       dist_to_mall +\n                       dist_to_supermarket,\n                     dframe=train_data_nogeo,\n                     bw=55,\n                     kernel=\"adaptive\",\n                     coords=coords_train,\n                     ntree = 50)\n\nWrite and read RDS for future use.\n\nwrite_rds(gwRF_adaptive, \"data/model/gwRF_adaptive.rds\")\n\n\ngwRF_adaptive &lt;- read_rds(\"data/model/gwRF_adaptive.rds\")\n\n\n\n2.7.2 Predicting by using test data\nWe will then use predict.grf() of SpatialML package to predict the resale value by using the test data and gwRF_adaptive model calibrated earlier.\n\n\n\n\n\n\nWarning\n\n\n\nTo Prof. Kam:\nAs the assignment specifies to predict the prices from July 2024 to September 2024, the testing data used here should be the HDB resale data for this period while the training data would consist of all the transactions from January 2023 to December 2023. An error has been made earlier from the data preparation to the data split. Due to time constraint I am not able to correct the training / test dataset used. I will correct this in an uncoming revision to this page.\nI will continue on the same dataset for this exercise but it would be using the data sampling method performed in section 2.1.\n\n\n\ntest_data_nogeo &lt;- cbind(test_data, coords_test) %&gt;%\n  st_drop_geometry()\n\n\ngwRF_pred &lt;- predict.grf(gwRF_adaptive,\n                         test_data_nogeo,\n                         x.var.name=\"X\",\n                         y.var.name=\"Y\",\n                         local.w=1,\n                         global.w=0)\n\nBefore moving on, we will save the output of the prediction model into rds for future use.\n\nwrite_rds(gwRF_pred, \"data/model/gwRF_pred.rds\")\n\n\ngwRF_pred &lt;- read_rds(\"data/model/gwRF_pred.rds\")\ngwRF_pred_df &lt;- as.data.frame(gwRF_pred)\n\nIn the code chunk below, cbind() is used to append the predicted values onto test_data_nogeo.\n\ntest_data_p &lt;- cbind(test_data_nogeo, gwRF_pred_df)\n\nWrite and read test_data_p for future use.\n\nwrite_rds(test_data_p, \"data/model/test_data_p.rds\")\n\n\ntest_data_p &lt;- read_rds(\"data/model/test_data_p.rds\")\n\n\n\n2.7.3 Calculating the Root Mean Square Error (RMSE)\nRMSE measures how far predicted values are from observed values in a regression analysis. In the code chunk below, rmse() of Metrics package is used to compute the RMSE.\n\nrmse(test_data_p$resale_price,\n     test_data_p$gwRF_pred)\n\n\n\n2.7.4 Visualising the predicted values\nA scatterplot can be used to visualise the actual resale price and the predicted resale price by using the code chunk below.\n\nggplot(data=test_data_p,\n       aes(x = GRF_pred,\n           y = resale_price)) +\n  geom_point()"
+  },
+  {
+    "objectID": "Take-home_Ex/Take-home_Ex03/data/eldercare/ELDERCARE.html",
+    "href": "Take-home_Ex/Take-home_Ex03/data/eldercare/ELDERCARE.html",
+    "title": "ISSS626-GAA",
+    "section": "",
+    "text": "&lt;!DOCTYPE qgis PUBLIC ‘http://mrcc.com/qgis.dtd’ ‘SYSTEM’&gt;  ELDERCARE  ENG dataset\n\nELDERCARE\n\n                 0 0     false"
+  },
+  {
+    "objectID": "In-class_Ex/In-class_Ex09/data/geospatial/ELDERCARE.html",
+    "href": "In-class_Ex/In-class_Ex09/data/geospatial/ELDERCARE.html",
+    "title": "ISSS626-GAA",
+    "section": "",
+    "text": "&lt;!DOCTYPE qgis PUBLIC ‘http://mrcc.com/qgis.dtd’ ‘SYSTEM’&gt;  ELDERCARE  ENG dataset\n\nELDERCARE\n\n                 0 0     false"
+  },
+  {
+    "objectID": "Hands-on_Ex/Hands-on_Ex09/data/geospatial/hexagons.html",
+    "href": "Hands-on_Ex/Hands-on_Ex09/data/geospatial/hexagons.html",
+    "title": "ISSS626-GAA",
+    "section": "",
+    "text": "&lt;!DOCTYPE qgis PUBLIC ‘http://mrcc.com/qgis.dtd’ ‘SYSTEM’&gt;     dataset\n\n\n                 0 0     false"
+  },
+  {
+    "objectID": "about.html",
+    "href": "about.html",
+    "title": "About",
+    "section": "",
+    "text": "About this site"
+  },
+  {
+    "objectID": "Hands-on_Ex/Hands-on_Ex09/data/geospatial/ELDERCARE.html",
+    "href": "Hands-on_Ex/Hands-on_Ex09/data/geospatial/ELDERCARE.html",
+    "title": "ISSS626-GAA",
+    "section": "",
+    "text": "&lt;!DOCTYPE qgis PUBLIC ‘http://mrcc.com/qgis.dtd’ ‘SYSTEM’&gt;  ELDERCARE  ENG dataset\n\nELDERCARE\n\n                 0 0     false"
+  },
+  {
+    "objectID": "Hands-on_Ex/Hands-on_Ex10/data/geospatial/MPSZ-2019.html",
+    "href": "Hands-on_Ex/Hands-on_Ex10/data/geospatial/MPSZ-2019.html",
+    "title": "ISSS626-GAA",
+    "section": "",
+    "text": "&lt;!DOCTYPE qgis PUBLIC ‘http://mrcc.com/qgis.dtd’ ‘SYSTEM’&gt;     dataset\n\n\n        0 0     false"
+  },
+  {
+    "objectID": "In-class_Ex/In-class_Ex09/data/geospatial/hexagons.html",
+    "href": "In-class_Ex/In-class_Ex09/data/geospatial/hexagons.html",
+    "title": "ISSS626-GAA",
+    "section": "",
+    "text": "&lt;!DOCTYPE qgis PUBLIC ‘http://mrcc.com/qgis.dtd’ ‘SYSTEM’&gt;     dataset\n\n\n                 0 0     false"
   }
 ]
